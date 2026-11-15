@@ -15,8 +15,7 @@ button,input,textarea,select{font:inherit;color:inherit}
 .wrap{max-width:1080px;margin:0 auto;padding:0 max(4vw,16px)}
 header{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding-top:env(safe-area-inset-top)}
 header .wrap{display:flex;align-items:center;gap:16px;height:64px}
-.conn{margin-left:auto;width:10px;height:10px;border-radius:50%;background:var(--line);flex:none;transition:background .3s}
-.conn.on{background:var(--acc);box-shadow:0 0 0 3px var(--ink)}
+.ver{margin-left:auto;font:600 13px var(--num);letter-spacing:.04em;color:var(--mute);white-space:nowrap}.ver.off{color:var(--ink);background:var(--acc);color:var(--on);padding:1px 6px}
 .seg{display:inline-flex;background:var(--card);border-radius:12px;padding:4px;gap:2px}
 .seg button{border:0;background:none;padding:0 16px;min-height:40px;border-radius:9px;font-weight:700;color:var(--mute);cursor:pointer;white-space:nowrap}
 .seg button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
@@ -162,7 +161,7 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:15px;line-height:1.6
 <body>
 <header><div class="wrap">
   <div class="seg" id="mode"><button data-m="host" aria-pressed="true">集計モード</button><button data-m="judge" aria-pressed="false">評価モード</button></div>
-  <i class="conn" id="conn"></i>
+  <span class="ver" id="ver"></span>
 </div></header>
 
 <main class="wrap">
@@ -260,7 +259,7 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:15px;line-height:1.6
   <button class="btn pri" id="jSend">送信</button>
 </div></div>
 
-<script src="core.js"></script>
-<script type="module" src="app.js"></script>
+<script src="core.js?v=1.4.0"></script>
+<script type="module" src="app.js?v=1.4.0"></script>
 </body>
 </html>

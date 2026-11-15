@@ -31,9 +31,12 @@ function poll(fn, cb, ms) {
   return () => { on = false; clearTimeout(t); };
 }
 
+let apiVer = null;
+export const apiVersion = () => apiVer;
 export async function init() {
   if (!base) return null;
-  await call('/health');
+  const h = await call('/health');
+  apiVer = h.ver || null;
   return token;
 }
 export const watchOpenRooms = cb => poll(() => call('/rooms'), cb, 10000);

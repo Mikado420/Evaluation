@@ -1,3 +1,4 @@
+const VER = '1.4.0';
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const store = (k, v) => { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || 'null'); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } };
@@ -12,9 +13,10 @@ async function flash(btn, html, ms = 1200) { const h = btn.innerHTML; btn.innerH
 /* ===== サーバー ===== */
 let S = null, online = false;
 const ready = (async () => {
-  try { S = await import('./server.js'); online = !!(await S.init()); } catch (e) { console.warn(e); online = false; }
-  $('#conn').classList.toggle('on', online);
-  $('#conn').title = online ? '接続中' : '未接続';
+  try { S = await import(`./server.js?v=${VER}`); online = !!(await S.init()); } catch (e) { console.warn(e); online = false; }
+  const av = online && S.apiVersion ? S.apiVersion() : null;
+  $('#ver').textContent = `ver ${VER}` + (!online ? ' · 未接続' : av !== VER ? ` · API ${av || '旧'}` : '');
+  $('#ver').classList.toggle('off', !online || av !== VER);
   $('#pubBtn').disabled = !online; tickJ();
   return online;
 })();

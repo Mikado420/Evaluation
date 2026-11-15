@@ -1,6 +1,8 @@
 // 譜面大会ツール API（Cloudflare Workers + D1）
 // D1 のバインディング名は DB。テーブルは初回アクセス時に自動で作られます。
 
+const VERSION = '1.4.0';
+
 const HEAD = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -69,7 +71,7 @@ export default {
       await setup(db);
 
       if (req.method === 'GET') {
-        if (path === '/health' || path === '/') return json({ ok: true });
+        if (path === '/health' || path === '/') return json({ ok: true, ver: VERSION });
         if (path === '/rooms') {
           const now = Date.now();
           const { results } = await db.prepare('SELECT id, name, pass, titles, created, start_at, end_at FROM rooms WHERE open = 1 AND (end_at IS NULL OR end_at > ?) ORDER BY created DESC LIMIT 50').bind(now).all();
