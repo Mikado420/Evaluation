@@ -41,6 +41,23 @@ $$('#hsub button').forEach(b => b.onclick = () => { view = b.dataset.v; show(); 
 addEventListener('hashchange', fromHash);
 
 /* ===== 01 パック ===== */
+// 端末内保存（音源を含むので IndexedDB）
+const IDB = {
+  db: null,
+  open() { return this.db || (this.db = new Promise((res, rej) => { const r = indexedDB.open('taikai', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); })); },
+  async get(k) { const db = await this.open(); return new Promise((res, rej) => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); },
+  async set(k, v) { const db = await this.open(); return new Promise((res, rej) => { const t = db.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); }
+};
+let seed = {}, restoring = true, metaT = null;
+const saveFiles = () => IDB.set('files', files).catch(() => {});
+function saveMeta() {
+  if (restoring) return;
+  clearTimeout(metaT);
+  metaT = setTimeout(() => IDB.set('packmeta', {
+    root: $('#root').value, prefix: $('#prefix').checked, dropSub: $('#dropSub').checked, am, audioName: $('#audioName').value,
+    order, edits: Object.fromEntries(charts.map(c => [c.id, { group: c.group, author: c.author }]))
+  }).catch(() => {}), 300);
+}
 let files = [], charts = [], order = [], msgs = [], am = 'match';
 const AUDIO = /\.(ogg|mp3|wav|opus|flac)$/i;
 const JUNK = /(^|\/)(__MACOSX\/|\.DS_Store$|\._|Thumbs\.db$)/;
@@ -54,7 +71,7 @@ async function addFiles(list) {
       catch (e) { msgs.push(`${f.name}：読み込めません`); }
     } else files.push({ path: f.name, data });
   }
-  rebuild();
+  rebuild(); saveFiles();
 }
 function rebuild() {
   const prev = new Map(charts.map(c => [c.id, c])), dirs = new Map();
@@ -65,7 +82,7 @@ function rebuild() {
     for (const t of tjas) {
       const name = t.path.slice(t.path.lastIndexOf('/') + 1), { text, enc } = decodeText(t.data);
       const fn = authorFromName(name.replace(/\.tja$/i, '')), title = headerVal(text, 'TITLE') || fn.title, wave = headerVal(text, 'WAVE');
-      const a = auds.find(x => wave && (x.path.endsWith('/' + wave) || x.path === wave)) || auds[0], old = prev.get(t.path);
+      const a = auds.find(x => wave && (x.path.endsWith('/' + wave) || x.path === wave)) || auds[0], old = prev.get(t.path) || seed[t.path];
       charts.push({ id: t.path, dir: d, file: name, text, enc, group: old ? old.group : title.trim(), author: old ? old.author : fn.author, audio: a ? { name: a.path.split('/').pop(), data: a.data } : null });
     }
   }
@@ -93,14 +110,17 @@ function render() {
     <div class="src"><span>${esc((p.chart.dir ? p.chart.dir + '/' : '') + p.chart.file)}</span>${p.chart.audio ? `<span>♪ ${esc(p.audioName)}</span>` : '<span class="bad">♪ 音源なし</span>'}</div>
   </div>`).join('');
   ['dlZip', 'dlJson', 'toPub', 'shuffle'].forEach(id => $('#' + id).disabled = !has);
+  saveMeta();
 }
 $('#list').addEventListener('change', e => { const g = e.target.dataset.g; if (g) { charts.find(x => x.id === g).group = e.target.value; render(); } });
-$('#list').addEventListener('input', e => { const a = e.target.dataset.a; if (a) charts.find(x => x.id === a).author = e.target.value; });
+$('#list').addEventListener('input', e => { const a = e.target.dataset.a; if (a) { charts.find(x => x.id === a).author = e.target.value; saveMeta(); } });
+['#root', '#dropSub'].forEach(q => $(q).addEventListener('input', saveMeta));
+$('#dropSub').addEventListener('change', saveMeta);
 $('#prefix').addEventListener('change', render);
 $('#audioName').addEventListener('input', render);
 $$('#am button').forEach(b => b.onclick = () => { am = b.dataset.a; $$('#am button').forEach(x => x.setAttribute('aria-pressed', x === b)); $('#audioName').hidden = am !== 'fixed'; render(); });
 $('#fFiles').onchange = e => { addFiles([...e.target.files]); e.target.value = ''; };
-$('#clear').onclick = () => { files = []; charts = []; order = []; msgs = []; render(); };
+$('#clear').onclick = () => { files = []; charts = []; order = []; msgs = []; render(); saveFiles(); };
 $('#shuffle').onclick = () => shuffle();
 const dz = $('#drop');
 ['dragenter', 'dragover'].forEach(t => dz.addEventListener(t, e => { e.preventDefault(); dz.classList.add('on'); }));
@@ -343,4 +363,16 @@ $('#jSend').onclick = async e => {
   sending = false; tickJ();
 };
 
-renderSc(); render(); updPubBtn(); fromHash(); watch();
+async function restorePack() {
+  try {
+    const [f, m] = await Promise.all([IDB.get('files'), IDB.get('packmeta')]);
+    if (m) {
+      $('#root').value = m.root ?? $('#root').value; $('#prefix').checked = m.prefix ?? true; $('#dropSub').checked = !!m.dropSub;
+      $('#audioName').value = m.audioName || 'song.ogg'; am = m.am || 'match';
+      $$('#am button').forEach(x => x.setAttribute('aria-pressed', x.dataset.a === am)); $('#audioName').hidden = am !== 'fixed';
+    }
+    if (f && f.length) { files = f; seed = (m && m.edits) || {}; order = (m && m.order) || []; rebuild(); seed = {}; }
+  } catch (e) {}
+  restoring = false; render();
+}
+renderSc(); render(); updPubBtn(); fromHash(); watch(); restorePack();
