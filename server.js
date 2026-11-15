@@ -39,13 +39,13 @@ export async function init() {
 export const watchOpenRooms = cb => poll(() => call('/rooms'), cb, 10000);
 export const myRooms = () => call('/mine', {});
 export const loadRoom = id => call('/load', { id }).catch(() => null);
-export async function publish({ roomId, name, pass, titles, authors, open }) {
-  return (await call('/save', { id: roomId || null, name, pass, titles, authors, open })).id;
+export async function publish({ roomId, name, pass, titles, authors, open, startAt, endAt }) {
+  return (await call('/save', { id: roomId || null, name, pass, titles, authors, open, startAt, endAt })).id;
 }
 export const setOpen = (id, open) => call('/open', { id, open });
 export async function watchSubs(id, pass, cb) { return poll(() => call('/subs', { id }), cb, 5000); }
 export async function enter(id, pass) {
-  try { const d = await call('/enter', { id, pass }); return { key: pass, titles: d.titles, mine: d.mine }; }
+  try { const d = await call('/enter', { id, pass }); return { key: pass, titles: d.titles, mine: d.mine, startAt: d.startAt, endAt: d.endAt, now: d.now }; }
   catch (e) { if (e.status === 403 || e.status === 404) return null; throw e; }
 }
 export const submit = (id, key, name, scores) => call('/submit', { id, pass: key, name, scores });

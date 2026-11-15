@@ -14,7 +14,7 @@ const ready = (async () => {
   try { S = await import('./server.js'); online = !!(await S.init()); } catch (e) { console.warn(e); online = false; }
   $('#conn').classList.toggle('on', online);
   $('#conn').title = online ? '接続中' : '未接続';
-  $('#pubBtn').disabled = !online; $('#jSend').disabled = !online;
+  $('#pubBtn').disabled = !online; tickJ();
   return online;
 })();
 
@@ -132,10 +132,14 @@ $('#dlJson').onclick = () => { fillSongs(); save(rootName() + '_対応表.json',
 $('#toPub').onclick = () => { fillSongs(); if (!$('#pName').value.trim()) $('#pName').value = $('#root').value; saveH(); view = 'pub'; show(); };
 
 /* ===== 02 公開 ===== */
-const H = Object.assign({ roomId: null, name: '', pass: '', songs: '', open: true, pubPass: null, scorers: [] }, store('taikai-host') || {});
-$('#pName').value = H.name; $('#pPass').value = H.pass; $('#songs').value = H.songs; $('#pOpen').checked = H.open;
-function saveH() { Object.assign(H, { name: $('#pName').value, pass: $('#pPass').value, songs: $('#songs').value, open: $('#pOpen').checked }); store('taikai-host', H); updPubBtn(); }
-['#pName', '#pPass', '#songs'].forEach(s => $(s).addEventListener('input', saveH));
+const H = Object.assign({ roomId: null, name: '', pass: '', songs: '', open: true, pubPass: null, scorers: [], startAt: null, endAt: null }, store('taikai-host') || {});
+const toLocal = ms => { if (!ms) return ''; const d = new Date(ms), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+const fromLocal = v => { if (!v) return null; const t = new Date(v).getTime(); return isFinite(t) ? t : null; };
+function setTimes() { $('#pStart').value = toLocal(H.startAt); $('#pEnd').value = toLocal(H.endAt); }
+$('#pName').value = H.name; $('#pPass').value = H.pass; $('#songs').value = H.songs; $('#pOpen').checked = H.open; setTimes();
+function saveH() { Object.assign(H, { name: $('#pName').value, pass: $('#pPass').value, songs: $('#songs').value, open: $('#pOpen').checked, startAt: fromLocal($('#pStart').value), endAt: fromLocal($('#pEnd').value) }); store('taikai-host', H); updPubBtn(); }
+['#pName', '#pPass', '#songs', '#pStart', '#pEnd'].forEach(s => $(s).addEventListener('input', saveH));
+$$('[data-clr]').forEach(b => b.onclick = () => { $('#' + b.dataset.clr).value = ''; saveH(); });
 function updPubBtn() { $('#pubBtn').textContent = H.roomId ? '更新' : '公開'; }
 let myList = [];
 async function refreshMyRooms() {
@@ -147,11 +151,11 @@ async function refreshMyRooms() {
 $('#myRooms').addEventListener('click', async e => {
   const b = e.target.closest('[data-r]'); if (!b) return;
   const id = b.dataset.r;
-  if (!id) { Object.assign(H, { roomId: null, name: '', pass: '', songs: H.songs, open: true, pubPass: null }); $('#pName').value = ''; $('#pPass').value = ''; $('#pOpen').checked = true; }
+  if (!id) { Object.assign(H, { roomId: null, name: '', pass: '', songs: H.songs, open: true, pubPass: null, startAt: null, endAt: null }); $('#pName').value = ''; $('#pPass').value = ''; $('#pOpen').checked = true; setTimes(); }
   else {
     const r = await S.loadRoom(id); if (!r) return;
     const authors = r.authors || [];
-    Object.assign(H, { roomId: id, name: r.name || '', pass: r.pass || '', open: !!r.open, pubPass: r.pass || '' });
+    Object.assign(H, { roomId: id, name: r.name || '', pass: r.pass || '', open: !!r.open, pubPass: r.pass || '', startAt: r.startAt || null, endAt: r.endAt || null }); setTimes();
     H.songs = (r.titles || []).map((t, i) => t + (authors[i] ? ' / ' + authors[i] : '')).join('\n');
     $('#pName').value = H.name; $('#pPass').value = H.pass; $('#songs').value = H.songs; $('#pOpen').checked = H.open;
   }
@@ -165,9 +169,11 @@ $('#pubBtn').onclick = async e => {
   const btn = e.currentTarget, songs = parseSongs($('#songs').value);
   if (!$('#pName').value.trim()) { shake($('#pName')); $('#pName').focus(); return; }
   if (!songs.length) { shake($('#songs')); $('#songs').focus(); return; }
+  saveH();
+  if (H.startAt && H.endAt && H.endAt <= H.startAt) { shake($('#pEnd')); return; }
   btn.disabled = true;
   try {
-    H.roomId = await S.publish({ roomId: H.roomId, name: $('#pName').value.trim(), pass: $('#pPass').value.trim(), titles: songs.map(s => s.name), authors: songs.map(s => s.author), open: $('#pOpen').checked });
+    H.roomId = await S.publish({ roomId: H.roomId, name: $('#pName').value.trim(), pass: $('#pPass').value.trim(), titles: songs.map(s => s.name), authors: songs.map(s => s.author), open: $('#pOpen').checked, startAt: H.startAt, endAt: H.endAt });
     H.pubPass = $('#pPass').value.trim(); saveH(); watch(); refreshMyRooms();
     flash(btn, '✓ 公開済み', 1600);
   } catch (er) { console.error(er); flash(btn, '失敗しました', 1600); }
@@ -232,19 +238,29 @@ $('#run').onclick = () => {
 $('#copyAll').onclick = e => copy(lastText, e.currentTarget);
 
 /* ===== 評価モード ===== */
-const J = { room: null, key: null, titles: [], sc: [], sent: false };
+const pad = n => String(n).padStart(2, '0');
+const fmtAt = ms => { const d = new Date(ms); return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const fmtLeft = ms => { const t = Math.max(0, Math.ceil(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), x = t % 60; return h >= 24 ? `${Math.floor(h / 24)}日 ${h % 24}時間` : `${h ? h + ':' : ''}${pad(m)}:${pad(x)}`; };
+const J = { room: null, key: null, titles: [], sc: [], sent: false, editing: false, startAt: null, endAt: null, skew: 0 };
 $('#jName').value = store('taikai-jname') || '';
-let lobbyOff = null, openRooms = [], openId = null;
+let lobbyOff = null, openRooms = [], openId = null, lobbySkew = 0;
 async function startLobby() {
   if (lobbyOff || !(await ready)) { if (!online) $('#openRooms').innerHTML = '<div class="empty">未接続</div>'; return; }
-  lobbyOff = S.watchOpenRooms(list => { openRooms = list; renderLobby(); });
+  lobbyOff = S.watchOpenRooms(list => { openRooms = list; if (list[0] && list[0].now) lobbySkew = list[0].now - Date.now(); renderLobby(); });
+}
+function roomWhen(r, skew) {
+  const now = Date.now() + skew;
+  if (r.startAt && now < r.startAt) return `<span class="when wait">${fmtAt(r.startAt)} 開始</span>`;
+  if (r.endAt) return `<span class="when">${fmtAt(r.endAt)} 締切</span>`;
+  return '';
 }
 function renderLobby() {
+  const focused = document.activeElement && document.activeElement.name === 'p' ? document.activeElement.value : null;
   $('#openRooms').innerHTML = openRooms.length ? openRooms.map(r => `<div class="rc">
-    <button data-o="${esc(r.id)}"><h3>${esc(r.name || '無題')}</h3><span class="c">${r.count || 0}<small>曲</small></span>${r.hasPass ? LOCK : '<span></span>'}</button>
+    <button data-o="${esc(r.id)}"><span class="nm"><h3>${esc(r.name || '無題')}</h3>${roomWhen(r, lobbySkew)}</span><span class="c">${r.count || 0}<small>曲</small></span>${r.hasPass ? LOCK : '<span></span>'}</button>
     ${r.hasPass && openId === r.id ? `<form data-p="${esc(r.id)}"><input type="text" name="p" placeholder="あいことば" aria-label="あいことば" autocomplete="off"><button class="btn ink">入る</button></form>` : ''}
   </div>`).join('') : '<div class="empty">公開中の大会はありません</div>';
-  const f = $(`#openRooms form`); if (f) f.p.focus();
+  const f = $('#openRooms form'); if (f) { if (focused != null) f.p.value = focused; f.p.focus(); }
 }
 $('#openRooms').addEventListener('click', e => {
   const b = e.target.closest('[data-o]'); if (!b) return;
@@ -260,13 +276,14 @@ async function join(r, pass, form) {
   try { res = await S.enter(r.id, pass); } catch (er) { res = null; }
   if (!res) { if (form) { form.p.classList.add('ng'); shake(form); form.p.select(); } return; }
   const draft = store('taikai-j-' + r.id);
-  Object.assign(J, { room: r, key: res.key, titles: res.titles, sent: !!res.mine });
+  Object.assign(J, { room: r, key: res.key, titles: res.titles, sent: !!res.mine, editing: false, startAt: res.startAt || null, endAt: res.endAt || null, skew: res.now ? res.now - Date.now() : 0 });
   J.sc = res.mine ? res.mine.scores.map(x => ({ v: x.v == null ? '' : String(x.v), fav: !!x.fav })) : (draft || []);
-  if (res.mine && !$('#jName').value) $('#jName').value = res.mine.name;
+  if (res.mine) $('#jName').value = res.mine.name;
+  if (lobbyOff) { lobbyOff(); lobbyOff = null; }
   $('#lobby').hidden = true; $('#jroom').hidden = false; $('#jTitle').textContent = r.name || '無題';
   renderJ(); show();
 }
-$('#jBack').onclick = () => { J.room = null; $('#lobby').hidden = false; $('#jroom').hidden = true; openId = null; renderLobby(); show(); };
+$('#jBack').onclick = () => { J.room = null; $('#lobby').hidden = false; $('#jroom').hidden = true; openId = null; show(); };
 function renderJ() {
   $('#jl').innerHTML = J.titles.map((t, i) => { const s = J.sc[i] || {}; return `<div class="jr" data-i="${i}">
     <div class="no">${i + 1}</div><div class="tg">MAX</div>
@@ -274,32 +291,48 @@ function renderJ() {
     <input type="text" inputmode="decimal" enterkeyhint="next" data-j="${i}" value="${esc(s.v ?? '')}" aria-label="${i + 1}曲目の点数">
     <button class="fv" data-f="${i}" aria-pressed="${!!s.fav}" aria-label="お気に入り">${STAR}</button>
   </div>`; }).join('');
-  updJ();
+  updJ(); tickJ();
 }
 const numOf = v => { const s = String(v ?? '').normalize('NFKC').trim(); return s !== '' && isFinite(Number(s)) ? Number(s) : null; };
-function updJ(dirty) {
+const phase = () => { const now = Date.now() + J.skew; return J.startAt && now < J.startAt ? 'wait' : J.endAt && now >= J.endAt ? 'end' : 'open'; };
+const locked = () => phase() === 'end' || (J.sent && !J.editing);
+function updJ() {
   const nums = J.titles.map((_, i) => numOf(J.sc[i] && J.sc[i].v)), vals = nums.filter(x => x != null);
   const mx = vals.length ? Math.max(...vals) : null;
   $$('#jl .jr').forEach(r => r.classList.toggle('mx', mx != null && nums[r.dataset.i] === mx));
   $('#jProg').innerHTML = `<b>${vals.length}</b>/${J.titles.length}`;
-  if (dirty) J.sent = false;
-  const b = $('#jSend'); b.classList.toggle('done', J.sent); b.textContent = J.sent ? '✓ 送信済み' : '送信';
   if (J.room) store('taikai-j-' + J.room.id, J.sc);
 }
-$('#jl').addEventListener('input', e => { const i = e.target.dataset.j; if (i != null) { J.sc[i] = { ...(J.sc[i] || {}), v: e.target.value }; updJ(true); } });
+let sending = false;
+function tickJ() {
+  if (!J.room) return;
+  const ph = phase(), lk = locked(), now = Date.now() + J.skew, b = $('#jSend');
+  $('#jroom').classList.toggle('locked', lk);
+  $$('#jl input').forEach(x => x.readOnly = lk); $$('#jl .fv').forEach(x => x.disabled = lk); $('#jName').readOnly = lk;
+  $('#jTime').textContent = ph === 'wait' ? `開始まで ${fmtLeft(J.startAt - now)}` : ph === 'open' && J.endAt ? `締切まで ${fmtLeft(J.endAt - now)}` : '';
+  if (sending) return;
+  b.className = 'btn ' + (ph === 'open' && lk ? '' : 'pri');
+  b.disabled = !online || ph !== 'open';
+  b.textContent = ph === 'wait' ? '開始前' : ph === 'end' ? '締切' : lk ? '修正' : J.sent ? '更新' : '送信';
+}
+setInterval(tickJ, 1000);
+$('#jl').addEventListener('input', e => { const i = e.target.dataset.j; if (i != null) { J.sc[i] = { ...(J.sc[i] || {}), v: e.target.value }; updJ(); } });
 $('#jl').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.dataset.j != null) { e.preventDefault(); const nx = $(`#jl [data-j="${+e.target.dataset.j + 1}"]`); nx ? nx.focus() : e.target.blur(); } });
-$('#jl').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (!b) return; const i = b.dataset.f; J.sc[i] = { ...(J.sc[i] || {}), fav: !(J.sc[i] && J.sc[i].fav) }; b.setAttribute('aria-pressed', J.sc[i].fav); updJ(true); });
-$('#jName').addEventListener('input', () => { store('taikai-jname', $('#jName').value); updJ(true); });
+$('#jl').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (!b || locked()) return; const i = b.dataset.f; J.sc[i] = { ...(J.sc[i] || {}), fav: !(J.sc[i] && J.sc[i].fav) }; b.setAttribute('aria-pressed', J.sc[i].fav); updJ(); });
+$('#jName').addEventListener('input', () => store('taikai-jname', $('#jName').value));
+const ERR = { 'not-yet': '開始前です', ended: '締切済み', closed: '受付終了', pass: 'あいことば変更' };
 $('#jSend').onclick = async e => {
-  const btn = e.currentTarget, name = $('#jName').value.trim();
+  const btn = e.currentTarget;
+  if (locked()) { J.editing = true; tickJ(); const f = $('#jl input'); if (f) f.focus(); return; }
+  const name = $('#jName').value.trim();
   if (!name) { shake($('#jName')); $('#jName').focus(); return; }
   const bad = J.titles.findIndex((_, i) => { const v = J.sc[i] && String(J.sc[i].v ?? '').trim(); return v && !/^[-ー]$/.test(v) && numOf(v) == null; });
   if (bad >= 0) { const el = $(`#jl [data-j="${bad}"]`); shake(el); el.focus(); return; }
   const scores = J.titles.map((_, i) => { const s = J.sc[i] || {}; return { v: numOf(s.v), fav: !!s.fav }; });
-  btn.disabled = true;
-  try { await S.submit(J.room.id, J.key, name, scores); J.sent = true; updJ(); }
-  catch (er) { console.error(er); flash(btn, '送信できませんでした', 1600); }
-  btn.disabled = !online;
+  sending = true; btn.disabled = true;
+  try { await S.submit(J.room.id, J.key, name, scores); J.sent = true; J.editing = false; btn.textContent = '✓ 送信済み'; btn.className = 'btn done'; await new Promise(r => setTimeout(r, 1400)); }
+  catch (er) { if (er.message === 'ended' || er.message === 'closed') { J.endAt = Date.now() + J.skew; J.editing = false; } btn.textContent = ERR[er.message] || '送信できませんでした'; await new Promise(r => setTimeout(r, 1600)); }
+  sending = false; tickJ();
 };
 
 renderSc(); render(); updPubBtn(); fromHash(); watch();

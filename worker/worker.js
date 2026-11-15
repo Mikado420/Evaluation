@@ -23,6 +23,10 @@ async function setup(db) {
       PRIMARY KEY (room, judge))`),
     db.prepare(`CREATE INDEX IF NOT EXISTS rooms_owner ON rooms(owner)`)
   ]);
+  // 受付時間の列（後から追加。既にあればエラーになるので無視）
+  for (const c of ['start_at', 'end_at']) {
+    try { await db.prepare(`ALTER TABLE rooms ADD COLUMN ${c} INTEGER`).run(); } catch (e) {}
+  }
   ready = true;
 }
 
@@ -48,6 +52,12 @@ async function openRoom(db, id, pass) {
   if (norm(pass) !== norm(r.pass)) throw new HttpError(403, 'pass');
   return r;
 }
+const time = v => { const n = Number(v); return v == null || v === '' || !isFinite(n) || n <= 0 ? null : Math.floor(n); };
+const win = r => ({ startAt: r.start_at ?? null, endAt: r.end_at ?? null });
+function checkWindow(r, now) {
+  if (r.start_at && now < r.start_at) throw new HttpError(403, 'not-yet');
+  if (r.end_at && now >= r.end_at) throw new HttpError(403, 'ended');
+}
 
 export default {
   async fetch(req, env) {
@@ -61,8 +71,9 @@ export default {
       if (req.method === 'GET') {
         if (path === '/health' || path === '/') return json({ ok: true });
         if (path === '/rooms') {
-          const { results } = await db.prepare('SELECT id, name, pass, titles, created FROM rooms WHERE open = 1 ORDER BY created DESC LIMIT 50').all();
-          return json(results.map(r => ({ id: r.id, name: r.name, hasPass: !!r.pass, count: JSON.parse(r.titles).length, open: true })));
+          const now = Date.now();
+          const { results } = await db.prepare('SELECT id, name, pass, titles, created, start_at, end_at FROM rooms WHERE open = 1 AND (end_at IS NULL OR end_at > ?) ORDER BY created DESC LIMIT 50').bind(now).all();
+          return json(results.map(r => ({ id: r.id, name: r.name, hasPass: !!r.pass, count: JSON.parse(r.titles).length, open: true, ...win(r), now })));
         }
         throw new HttpError(404, 'not-found');
       }
@@ -73,28 +84,29 @@ export default {
 
       switch (path) {
         case '/mine': {
-          const { results } = await db.prepare('SELECT id, name, pass, titles, open, created FROM rooms WHERE owner = ? ORDER BY created DESC').bind(me).all();
-          return json(results.map(r => ({ id: r.id, name: r.name, hasPass: !!r.pass, count: JSON.parse(r.titles).length, open: !!r.open })));
+          const { results } = await db.prepare('SELECT * FROM rooms WHERE owner = ? ORDER BY created DESC').bind(me).all();
+          return json(results.map(r => ({ id: r.id, name: r.name, hasPass: !!r.pass, count: JSON.parse(r.titles).length, open: !!r.open, ...win(r) })));
         }
         case '/load': {
           const r = await ownRoom(db, b.id, me);
-          return json({ id: r.id, name: r.name, pass: r.pass, titles: JSON.parse(r.titles), authors: JSON.parse(r.authors), open: !!r.open });
+          return json({ id: r.id, name: r.name, pass: r.pass, titles: JSON.parse(r.titles), authors: JSON.parse(r.authors), open: !!r.open, ...win(r) });
         }
         case '/save': {
           const name = str(b.name, 60), pass = str(b.pass, 60);
           const titles = list(b.titles, 300, t => str(t, 120));
           const authors = list(b.authors || [], 300, t => str(t, 60));
           if (!name || !titles.length) throw new HttpError(400, 'empty');
-          const open = b.open === false ? 0 : 1;
+          const open = b.open === false ? 0 : 1, st = time(b.startAt), en = time(b.endAt);
+          if (st && en && en <= st) throw new HttpError(400, 'bad-window');
           if (b.id) {
             await ownRoom(db, b.id, me);
-            await db.prepare('UPDATE rooms SET name = ?, pass = ?, titles = ?, authors = ?, open = ?, updated = ? WHERE id = ?')
-              .bind(name, pass, JSON.stringify(titles), JSON.stringify(authors), open, now, b.id).run();
+            await db.prepare('UPDATE rooms SET name = ?, pass = ?, titles = ?, authors = ?, open = ?, start_at = ?, end_at = ?, updated = ? WHERE id = ?')
+              .bind(name, pass, JSON.stringify(titles), JSON.stringify(authors), open, st, en, now, b.id).run();
             return json({ id: b.id });
           }
           const id = newId();
-          await db.prepare('INSERT INTO rooms (id, owner, name, pass, titles, authors, open, created, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-            .bind(id, me, name, pass, JSON.stringify(titles), JSON.stringify(authors), open, now, now).run();
+          await db.prepare('INSERT INTO rooms (id, owner, name, pass, titles, authors, open, start_at, end_at, created, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .bind(id, me, name, pass, JSON.stringify(titles), JSON.stringify(authors), open, st, en, now, now).run();
           return json({ id });
         }
         case '/open': {
@@ -115,10 +127,11 @@ export default {
         case '/enter': {
           const r = await openRoom(db, b.id, b.pass);
           const m = await db.prepare('SELECT name, scores FROM subs WHERE room = ? AND judge = ?').bind(r.id, me).first();
-          return json({ name: r.name, titles: JSON.parse(r.titles), mine: m ? { name: m.name, scores: JSON.parse(m.scores) } : null });
+          return json({ name: r.name, titles: JSON.parse(r.titles), mine: m ? { name: m.name, scores: JSON.parse(m.scores) } : null, ...win(r), now });
         }
         case '/submit': {
           const r = await openRoom(db, b.id, b.pass);
+          checkWindow(r, now);
           const name = str(b.name, 40);
           if (!name) throw new HttpError(400, 'name');
           const scores = list(b.scores, 300, x => {
@@ -128,7 +141,7 @@ export default {
           await db.prepare(`INSERT INTO subs (room, judge, name, scores, at) VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(room, judge) DO UPDATE SET name = excluded.name, scores = excluded.scores, at = excluded.at`)
             .bind(r.id, me, name, JSON.stringify(scores), now).run();
-          return json({ ok: true });
+          return json({ ok: true, at: now });
         }
       }
       throw new HttpError(404, 'not-found');
