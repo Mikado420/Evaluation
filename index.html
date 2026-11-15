@@ -135,6 +135,7 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:15px;line-height:1.6
 .jr.mx input{border-color:var(--acc);border-width:2px}
 .jr .tg{grid-column:1;justify-self:end;font:800 12px var(--num);background:var(--acc);color:var(--on);padding:1px 4px;display:none}
 .jr.mx .tg{display:block}.jr.mx .no{display:none}
+.roster{display:flex;gap:10px;align-items:baseline;margin-top:14px}.roster b{font-size:13px;color:var(--mute);flex:none}.roster div{display:flex;flex-wrap:wrap;gap:6px}.roster span{background:var(--card);border-left:3px solid var(--acc);padding:2px 10px;font-size:14px;font-weight:700}
 .prog{font:italic 800 22px var(--num);color:var(--mute)}.prog b{color:var(--ink)}
 .locked .jr input,.locked #jName{background:transparent;border-color:var(--line)}
 .jtime{font:700 18px var(--num);color:var(--mute);margin-right:auto;font-variant-numeric:tabular-nums}
@@ -234,6 +235,7 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:15px;line-height:1.6
       <h3 id="jTitle"></h3>
       <div class="prog" id="jProg"></div>
     </div>
+    <div class="roster" id="rosterWrap" hidden><b>参加者</b><div id="roster"></div></div>
     <input type="text" class="jname" id="jName" placeholder="評価者名" aria-label="評価者名" maxlength="40">
     <div class="jl" id="jl"></div>
   </div>

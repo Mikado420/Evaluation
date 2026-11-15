@@ -127,7 +127,9 @@ export default {
         case '/enter': {
           const r = await openRoom(db, b.id, b.pass);
           const m = await db.prepare('SELECT name, scores FROM subs WHERE room = ? AND judge = ?').bind(r.id, me).first();
-          return json({ name: r.name, titles: JSON.parse(r.titles), mine: m ? { name: m.name, scores: JSON.parse(m.scores) } : null, ...win(r), now });
+          // 参加者名簿：作成者名だけを重複なし・五十音順で返す（曲との対応は伏せる）
+          const roster = [...new Set(JSON.parse(r.authors).map(x => String(x).trim()).filter(Boolean))].sort((x, y) => x.localeCompare(y, 'ja'));
+          return json({ name: r.name, titles: JSON.parse(r.titles), roster, mine: m ? { name: m.name, scores: JSON.parse(m.scores) } : null, ...win(r), now });
         }
         case '/submit': {
           const r = await openRoom(db, b.id, b.pass);

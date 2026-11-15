@@ -45,7 +45,7 @@ export async function publish({ roomId, name, pass, titles, authors, open, start
 export const setOpen = (id, open) => call('/open', { id, open });
 export async function watchSubs(id, pass, cb) { return poll(() => call('/subs', { id }), cb, 5000); }
 export async function enter(id, pass) {
-  try { const d = await call('/enter', { id, pass }); return { key: pass, titles: d.titles, mine: d.mine, startAt: d.startAt, endAt: d.endAt, now: d.now }; }
+  try { const d = await call('/enter', { id, pass }); return { key: pass, titles: d.titles, roster: d.roster || [], mine: d.mine, startAt: d.startAt, endAt: d.endAt, now: d.now }; }
   catch (e) { if (e.status === 403 || e.status === 404) return null; throw e; }
 }
 export const submit = (id, key, name, scores) => call('/submit', { id, pass: key, name, scores });

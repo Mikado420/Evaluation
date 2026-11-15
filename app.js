@@ -3,6 +3,7 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '
 const store = (k, v) => { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || 'null'); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } };
 const STAR = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>';
 const LOCK = '<svg class="lk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+const UNLOCK = '<svg class="lk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></svg>';
 const CLOUD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9.5 4.3 4.3 0 0 0 7 18z"/></svg>';
 const COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg>';
 const shake = el => { el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); };
@@ -257,7 +258,7 @@ function roomWhen(r, skew) {
 function renderLobby() {
   const focused = document.activeElement && document.activeElement.name === 'p' ? document.activeElement.value : null;
   $('#openRooms').innerHTML = openRooms.length ? openRooms.map(r => `<div class="rc">
-    <button data-o="${esc(r.id)}"><span class="nm"><h3>${esc(r.name || '無題')}</h3>${roomWhen(r, lobbySkew)}</span><span class="c">${r.count || 0}<small>曲</small></span>${r.hasPass ? LOCK : '<span></span>'}</button>
+    <button data-o="${esc(r.id)}"><span class="nm"><h3>${esc(r.name || '無題')}</h3>${roomWhen(r, lobbySkew)}</span><span class="c">${r.count || 0}<small>曲</small></span>${r.hasPass ? (store('taikai-pass-' + r.id) ? UNLOCK : LOCK) : '<span></span>'}</button>
     ${r.hasPass && openId === r.id ? `<form data-p="${esc(r.id)}"><input type="text" name="p" placeholder="あいことば" aria-label="あいことば" autocomplete="off"><button class="btn ink">入る</button></form>` : ''}
   </div>`).join('') : '<div class="empty">公開中の大会はありません</div>';
   const f = $('#openRooms form'); if (f) { if (focused != null) f.p.value = focused; f.p.focus(); }
@@ -265,7 +266,10 @@ function renderLobby() {
 $('#openRooms').addEventListener('click', e => {
   const b = e.target.closest('[data-o]'); if (!b) return;
   const r = openRooms.find(x => x.id === b.dataset.o); if (!r) return;
-  if (r.hasPass) { openId = openId === r.id ? null : r.id; renderLobby(); } else join(r, '');
+  if (!r.hasPass) return join(r, '');
+  const saved = store('taikai-pass-' + r.id);
+  if (saved && openId !== r.id) return join(r, saved).then(ok => { if (!ok) { store('taikai-pass-' + r.id, ''); openId = r.id; renderLobby(); } });
+  openId = openId === r.id ? null : r.id; renderLobby();
 });
 $('#openRooms').addEventListener('submit', e => {
   e.preventDefault();
@@ -274,14 +278,18 @@ $('#openRooms').addEventListener('submit', e => {
 async function join(r, pass, form) {
   let res = null;
   try { res = await S.enter(r.id, pass); } catch (er) { res = null; }
-  if (!res) { if (form) { form.p.classList.add('ng'); shake(form); form.p.select(); } return; }
+  if (!res) { if (form) { form.p.classList.add('ng'); shake(form); form.p.select(); } return false; }
+  if (r.hasPass) store('taikai-pass-' + r.id, pass);
   const draft = store('taikai-j-' + r.id);
   Object.assign(J, { room: r, key: res.key, titles: res.titles, sent: !!res.mine, editing: false, startAt: res.startAt || null, endAt: res.endAt || null, skew: res.now ? res.now - Date.now() : 0 });
   J.sc = res.mine ? res.mine.scores.map(x => ({ v: x.v == null ? '' : String(x.v), fav: !!x.fav })) : (draft || []);
   if (res.mine) $('#jName').value = res.mine.name;
   if (lobbyOff) { lobbyOff(); lobbyOff = null; }
   $('#lobby').hidden = true; $('#jroom').hidden = false; $('#jTitle').textContent = r.name || '無題';
+  $('#roster').innerHTML = (res.roster || []).map(n => `<span>${esc(n)}</span>`).join('');
+  $('#rosterWrap').hidden = !(res.roster || []).length;
   renderJ(); show();
+  return true;
 }
 $('#jBack').onclick = () => { J.room = null; $('#lobby').hidden = false; $('#jroom').hidden = true; openId = null; show(); };
 function renderJ() {
@@ -331,7 +339,7 @@ $('#jSend').onclick = async e => {
   const scores = J.titles.map((_, i) => { const s = J.sc[i] || {}; return { v: numOf(s.v), fav: !!s.fav }; });
   sending = true; btn.disabled = true;
   try { await S.submit(J.room.id, J.key, name, scores); J.sent = true; J.editing = false; btn.textContent = '✓ 送信済み'; btn.className = 'btn done'; await new Promise(r => setTimeout(r, 1400)); }
-  catch (er) { if (er.message === 'ended' || er.message === 'closed') { J.endAt = Date.now() + J.skew; J.editing = false; } btn.textContent = ERR[er.message] || '送信できませんでした'; await new Promise(r => setTimeout(r, 1600)); }
+  catch (er) { if (er.message === 'ended' || er.message === 'closed') { J.endAt = Date.now() + J.skew; J.editing = false; } if (er.message === 'pass') store('taikai-pass-' + J.room.id, ''); btn.textContent = ERR[er.message] || '送信できませんでした'; await new Promise(r => setTimeout(r, 1600)); }
   sending = false; tickJ();
 };
 
