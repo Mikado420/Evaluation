@@ -16,7 +16,11 @@
 4. **コードを貼る**：Worker → Edit code → `worker/worker.js` の中身で置き換えて Deploy
 5. **URL を設定**：Worker の URL（`https://taikai-api.<名前>.workers.dev`）を `config.js` の `API` に書く
 
-テーブルは初回アクセス時に自動で作られます（列の追加も自動）。`worker/worker.js` を更新したときは、手順4と同じく Edit code に貼り直して Deploy してください。
+テーブルは初回アクセス時に自動で作られます（列の追加も自動）。
+
+### 自動デプロイ（Workers Builds）
+
+Worker の Settings → Builds → Connect で `Mikado420/Evaluation`（ブランチ `main`、Root directory `/worker`）をつなぐと、push のたびに `worker/wrangler.jsonc` の設定で自動デプロイされます。
 
 GitHub Pages は Settings → Pages → Branch を `main` / `(root)` にして保存します。右上の丸が緑なら接続済みです。
 

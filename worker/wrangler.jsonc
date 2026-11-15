@@ -1,0 +1,14 @@
+{
+  // Cloudflare Workers Builds 用の設定。main に push すると自動でデプロイされます。
+  "name": "taikai-api",
+  "main": "worker.js",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "taikai",
+      "database_id": "f9e74787-368e-4195-aabf-4c7cfdb6e2d3"
+    }
+  ]
+}
