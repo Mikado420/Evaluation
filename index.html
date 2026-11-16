@@ -7,7 +7,7 @@
 <script>
 // 新しい版が出ていたら、URL を変えて読み込み直す（ホーム画面のアプリでも古い画面が残らないように）
 (function () {
-  var V='1.7.0';
+  var V='1.7.1';
   function check() {
     fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
       if (!j.v || j.v === V) return;
@@ -100,6 +100,8 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:15px;line-height:1.6
 .it .t small .bad{background:var(--acc);color:var(--on);font-weight:900;padding:0 4px}
 .it .ed{display:grid;gap:6px}.it .ed input{padding:7px 10px}
 .it .ed small{font-size:11px;color:var(--mute);word-break:break-all}
+.it .er{display:flex;align-items:center;gap:8px}.it .er small{flex:1}
+.del{border:1.5px solid var(--ink);background:var(--bg);color:var(--ink);font-weight:700;font-size:13px;min-height:32px;padding:0 10px;cursor:pointer;white-space:nowrap}.del:hover{background:var(--ink);color:var(--bg)}.del.arm{background:var(--acc);border-color:var(--acc);color:var(--on)}
 .it.edit{cursor:default;background:linear-gradient(90deg,var(--acc) 3px,transparent 3px)}
 .vw{border:1.5px solid var(--ink);background:var(--bg);color:var(--ink);font:700 13px var(--num);letter-spacing:.04em;padding:0 8px;cursor:pointer;min-height:30px}
 .vw:hover{background:var(--acc);border-color:var(--acc);color:var(--on)}
@@ -292,7 +294,7 @@ button.tr.fl{cursor:pointer}button.tr.fl:hover{background:var(--card)}button.tr.
   <button data-v="judge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>評価</button>
 </div></nav>
 
-<script src="core.js?v=1.7.0"></script>
-<script type="module" src="app.js?v=1.7.0"></script>
+<script src="core.js?v=1.7.1"></script>
+<script type="module" src="app.js?v=1.7.1"></script>
 </body>
 </html>

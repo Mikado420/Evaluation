@@ -1,4 +1,4 @@
-const VER = '1.7.0';
+const VER = '1.7.1';
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const store = (k, v) => { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || 'null'); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } };
@@ -56,7 +56,8 @@ const IDB = {
   set(k, v) { return this.tx('kv', 'readwrite', st => { st.put(v, k); }); },
   allFiles() { return this.tx('files', 'readonly', st => st.getAll()); },
   putFiles(list) { return this.tx('files', 'readwrite', st => { for (const f of list) st.put({ path: f.path, blob: new Blob([f.data]) }); }); },
-  clearFiles() { return this.tx('files', 'readwrite', st => { st.clear(); }); }
+  clearFiles() { return this.tx('files', 'readwrite', st => { st.clear(); }); },
+  delFiles(paths) { return this.tx('files', 'readwrite', st => { for (const p of paths) st.delete(p); }); }
 };
 function storeErr(e) { console.warn(e); msgs = [...msgs.filter(m => !m.startsWith('端末')), '端末に保存できませんでした（容量不足の可能性があります）']; $('#msg').innerHTML = msgs.map(m => `<div>${esc(m)}</div>`).join(''); }
 let persistAsked = false;
@@ -129,7 +130,7 @@ function render() {
   $('#list').innerHTML = plan.map(p => { const c = p.chart, ed = editId === p.id; return `<div class="it${ed ? ' edit' : ''}" data-row="${esc(p.id)}">
     <div class="no">${p.n}</div>
     ${p.label ? `<span class="lab">${p.label}</span>` : '<span class="lab x"></span>'}
-    ${ed ? `<div class="ed"><input type="text" data-g="${esc(p.id)}" value="${esc(c.group)}" aria-label="曲名"><input type="text" data-a="${esc(p.id)}" value="${esc(c.author)}" placeholder="作成者" aria-label="作成者"><small>${esc((c.dir ? c.dir + '/' : '') + c.file)}</small></div>`
+    ${ed ? `<div class="ed"><input type="text" data-g="${esc(p.id)}" value="${esc(c.group)}" aria-label="曲名"><input type="text" data-a="${esc(p.id)}" value="${esc(c.author)}" placeholder="作成者" aria-label="作成者"><div class="er"><small>${esc((c.dir ? c.dir + '/' : '') + c.file)}</small><button class="del${delArm === p.id ? ' arm' : ''}" data-del="${esc(p.id)}">${delArm === p.id ? 'もう一度押して削除' : '削除'}</button></div></div>`
       : `<div class="t"><b>${esc(c.group)}</b><small>${esc(c.author || '作成者なし')} ・ ${c.audio ? '♪ ' + esc(p.audioName) : '<span class="bad">音源なし</span>'}</small></div>`}
     <button class="vw" data-view="${esc(p.id)}">TJA</button>
   </div>`; }).join('');
@@ -138,8 +139,24 @@ function render() {
   saveMeta();
 }
 /* 中身の確認 */
-let editId = null;
+let editId = null, delArm = null, delT = null;
+// 譜面の削除：.tja と、同じフォルダで他に使われていない音源を消す
+function removeChart(id) {
+  const c = charts.find(x => x.id === id); if (!c) return;
+  const inDir = f => { const i = f.path.lastIndexOf('/'); return (i < 0 ? '' : f.path.slice(0, i)) === c.dir; };
+  const others = charts.filter(x => x.id !== id && x.dir === c.dir);
+  const gone = files.filter(f => f.path === id || (!others.length && inDir(f))).map(f => f.path);
+  files = files.filter(f => !gone.includes(f.path));
+  order = order.filter(x => x !== id); editId = null; delArm = null;
+  IDB.delFiles(gone).catch(storeErr);
+  rebuild();
+}
 $('#list').addEventListener('click', e => {
+  const d = e.target.closest('[data-del]');
+  if (d) {
+    if (delArm === d.dataset.del) { clearTimeout(delT); removeChart(d.dataset.del); return; }
+    delArm = d.dataset.del; render(); clearTimeout(delT); delT = setTimeout(() => { delArm = null; render(); }, 3000); return;
+  }
   if (e.target.closest('input,button')) return;
   const r = e.target.closest('[data-row]'); if (!r) return;
   editId = editId === r.dataset.row ? null : r.dataset.row; render();
