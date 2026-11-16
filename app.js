@@ -1,4 +1,4 @@
-const VER = '1.7.2';
+const VER = '1.7.3';
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const store = (k, v) => { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || 'null'); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } };
@@ -400,9 +400,11 @@ async function join(r, pass, form) {
   try { res = await S.enter(r.id, pass); } catch (er) { res = null; }
   if (!res) { if (form) { form.p.classList.add('ng'); shake(form); form.p.select(); } return false; }
   if (r.hasPass) store('taikai-pass-' + r.id, pass);
-  const draft = store('taikai-j-' + r.id);
+  // 途中入力の下書き（旧形式は配列）
+  let draft = store('taikai-j-' + r.id); if (Array.isArray(draft)) draft = { sc: draft, dirty: !res.mine };
   Object.assign(J, { room: r, key: res.key, titles: res.titles, sent: !!res.mine, editing: false, startAt: res.startAt || null, endAt: res.endAt || null, skew: res.now ? res.now - Date.now() : 0 });
-  J.sc = res.mine ? res.mine.scores.map(x => ({ v: x.v == null ? '' : String(x.v), fav: !!x.fav })) : (draft || []);
+  J.sc = res.mine ? res.mine.scores.map(x => ({ v: x.v == null ? '' : String(x.v), fav: !!x.fav })) : [];
+  if (draft && draft.sc && (draft.dirty || !res.mine)) { J.sc = draft.sc; if (res.mine && draft.dirty) J.editing = true; }
   if (res.mine) $('#jName').value = res.mine.name;
   if (lobbyOff) { lobbyOff(); lobbyOff = null; }
   $('#lobby').hidden = true; $('#jroom').hidden = false; $('#jTitle').textContent = r.name || '無題'; scrollTo(0, 0);
@@ -416,7 +418,7 @@ function renderJ() {
   $('#jl').innerHTML = J.titles.map((t, i) => { const s = J.sc[i] || {}; return `<div class="jr" data-i="${i}">
     <div class="no">${i + 1}</div><div class="tg">MAX</div>
     <div class="tt">${esc(t)}</div>
-    <input type="text" inputmode="decimal" enterkeyhint="next" data-j="${i}" value="${esc(s.v ?? '')}" aria-label="${i + 1}曲目の点数">
+    <input type="text" inputmode="decimal" enterkeyhint="next" data-j="${i}" placeholder="自譜面" value="${esc(s.v ?? '')}" aria-label="${i + 1}曲目の点数">
     <button class="fv" data-f="${i}" aria-pressed="${!!s.fav}" aria-label="お気に入り">${STAR}</button>
   </div>`; }).join('');
   updJ(); tickJ();
@@ -424,12 +426,12 @@ function renderJ() {
 const numOf = v => { const s = String(v ?? '').normalize('NFKC').trim(); return s !== '' && isFinite(Number(s)) ? Number(s) : null; };
 const phase = () => { const now = Date.now() + J.skew; return J.startAt && now < J.startAt ? 'wait' : J.endAt && now >= J.endAt ? 'end' : 'open'; };
 const locked = () => phase() === 'end' || (J.sent && !J.editing);
-function updJ() {
+function updJ(dirty) {
   const nums = J.titles.map((_, i) => numOf(J.sc[i] && J.sc[i].v)), vals = nums.filter(x => x != null);
   const mx = vals.length ? Math.max(...vals) : null;
   $$('#jl .jr').forEach(r => r.classList.toggle('mx', mx != null && nums[r.dataset.i] === mx));
   $('#jProg').innerHTML = `<b>${vals.length}</b>/${J.titles.length}`;
-  if (J.room) store('taikai-j-' + J.room.id, J.sc);
+  if (J.room && dirty) store('taikai-j-' + J.room.id, { sc: J.sc, dirty: true, at: Date.now() });
 }
 let sending = false;
 function tickJ() {
@@ -444,9 +446,9 @@ function tickJ() {
   b.textContent = ph === 'wait' ? '開始前' : ph === 'end' ? '締切' : lk ? '修正' : J.sent ? '更新' : '送信';
 }
 setInterval(tickJ, 1000);
-$('#jl').addEventListener('input', e => { const i = e.target.dataset.j; if (i != null) { J.sc[i] = { ...(J.sc[i] || {}), v: e.target.value }; updJ(); } });
+$('#jl').addEventListener('input', e => { const i = e.target.dataset.j; if (i != null) { J.sc[i] = { ...(J.sc[i] || {}), v: e.target.value }; updJ(true); } });
 $('#jl').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.dataset.j != null) { e.preventDefault(); const nx = $(`#jl [data-j="${+e.target.dataset.j + 1}"]`); nx ? nx.focus() : e.target.blur(); } });
-$('#jl').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (!b || locked()) return; const i = b.dataset.f; J.sc[i] = { ...(J.sc[i] || {}), fav: !(J.sc[i] && J.sc[i].fav) }; b.setAttribute('aria-pressed', J.sc[i].fav); updJ(); });
+$('#jl').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (!b || locked()) return; const i = b.dataset.f; J.sc[i] = { ...(J.sc[i] || {}), fav: !(J.sc[i] && J.sc[i].fav) }; b.setAttribute('aria-pressed', J.sc[i].fav); updJ(true); });
 $('#jName').addEventListener('input', () => store('taikai-jname', $('#jName').value));
 const ERR = { 'not-yet': '開始前です', ended: '締切済み', closed: '受付終了', pass: 'あいことば変更' };
 $('#jSend').onclick = async e => {
@@ -458,7 +460,7 @@ $('#jSend').onclick = async e => {
   if (bad >= 0) { const el = $(`#jl [data-j="${bad}"]`); shake(el); el.focus(); return; }
   const scores = J.titles.map((_, i) => { const s = J.sc[i] || {}; return { v: numOf(s.v), fav: !!s.fav }; });
   sending = true; btn.disabled = true;
-  try { await S.submit(J.room.id, J.key, name, scores); J.sent = true; J.editing = false; btn.textContent = '✓ 送信済み'; btn.className = 'btn done'; await new Promise(r => setTimeout(r, 1400)); }
+  try { await S.submit(J.room.id, J.key, name, scores); J.sent = true; J.editing = false; store('taikai-j-' + J.room.id, { sc: J.sc, dirty: false, at: Date.now() }); btn.textContent = '✓ 送信済み'; btn.className = 'btn done'; await new Promise(r => setTimeout(r, 1400)); }
   catch (er) { if (er.message === 'ended' || er.message === 'closed') { J.endAt = Date.now() + J.skew; J.editing = false; } if (er.message === 'pass') store('taikai-pass-' + J.room.id, ''); btn.textContent = ERR[er.message] || '送信できませんでした'; await new Promise(r => setTimeout(r, 1600)); }
   sending = false; tickJ();
 };

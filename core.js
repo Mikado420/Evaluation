@@ -166,7 +166,7 @@ function parseScoreLines(text) {
   let bad = 0;
   const vals = lines.map(raw => {
     let s = raw.normalize('NFKC').trim(), fav = false;
-    if (!s || /^[-ー―]$/.test(s) || s === '自譜面') return null;
+    if (!s || /^[-ー―]$/.test(s) || /^自/.test(s)) return null; // 空欄・自譜面は採点なし
     s = s.replace(/[○◯〇●◎]+\s*$/, () => { fav = true; return ''; }).trim();
     const v = Number(s);
     if (s === '' || !isFinite(v)) { bad++; return null; }
