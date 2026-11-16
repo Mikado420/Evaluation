@@ -1,4 +1,4 @@
-const VER = '1.5.1';
+const VER = '1.6.0';
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const store = (k, v) => { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || 'null'); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } };
@@ -22,24 +22,22 @@ const ready = (async () => {
 })();
 
 /* ===== 画面切替 ===== */
-let mode = 'host', view = 'pack';
+let view = 'pack';
+const TITLES = { pack: 'パック', pub: '公開', tally: '集計', judge: '評価' };
 function show() {
-  $$('#mode button').forEach(b => b.setAttribute('aria-pressed', b.dataset.m === mode));
-  $$('#hsub button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === view));
-  $('#host').hidden = mode !== 'host'; $('#judge').hidden = mode !== 'judge';
-  for (const v of ['pack', 'pub', 'tally']) $('#' + v).hidden = view !== v;
-  $('#barPack').hidden = !(mode === 'host' && view === 'pack');
-  $('#barPub').hidden = !(mode === 'host' && view === 'pub');
-  $('#barTally').hidden = !(mode === 'host' && view === 'tally');
-  $('#barJudge').hidden = !(mode === 'judge' && J.room);
-  const h = mode === 'judge' ? 'judge' : view;
-  if (location.hash.slice(1) !== h) history.replaceState(null, '', '#' + h);
-  if (mode === 'host' && view === 'pub') refreshMyRooms();
-  if (mode === 'judge') startLobby();
+  for (const v of ['pack', 'pub', 'tally', 'judge']) $('#' + v).hidden = view !== v;
+  $$('nav button').forEach(b => b.dataset.v === view ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
+  $('#title').textContent = view === 'judge' && J.room ? '評価' : TITLES[view];
+  $('#barPack').hidden = !(view === 'pack' && charts.length);
+  $('#barPub').hidden = view !== 'pub';
+  $('#barTally').hidden = view !== 'tally';
+  $('#barJudge').hidden = !(view === 'judge' && J.room);
+  if (location.hash.slice(1) !== view) history.replaceState(null, '', location.search + '#' + view);
+  if (view === 'pub') refreshMyRooms();
+  if (view === 'judge') startLobby();
 }
-function fromHash() { const h = location.hash.slice(1); if (h === 'judge') mode = 'judge'; else { mode = 'host'; if (['pack', 'pub', 'tally'].includes(h)) view = h; } show(); }
-$$('#mode button').forEach(b => b.onclick = () => { mode = b.dataset.m; show(); });
-$$('#hsub button').forEach(b => b.onclick = () => { view = b.dataset.v; show(); });
+function fromHash() { const h = location.hash.slice(1); if (TITLES[h]) view = h; show(); }
+$$('nav button').forEach(b => b.onclick = () => { view = b.dataset.v; show(); scrollTo(0, 0); });
 addEventListener('hashchange', fromHash);
 
 /* ===== 01 パック ===== */
@@ -117,20 +115,29 @@ const opt = () => ({ prefix: $('#prefix').checked, audioMode: am, audioName: $('
 function render() {
   const plan = makePlan(charts, order, opt()), n = charts.length, g = new Set(plan.map(p => p.chart.group.trim())).size, has = n > 0;
   $('#drop').classList.toggle('mini', has); $('#clear').hidden = !has; $('#packBody').hidden = !has;
+  $('#addBtn').firstChild.textContent = has ? '追加' : 'ファイル'; $('#anWrap').hidden = am !== 'fixed';
+  if (view === 'pack') $('#barPack').hidden = !has;
   $('#dropT').innerHTML = has ? `<span class="cnt">${n}</span>譜面 <span class="cnt">${g}</span>曲` : 'TJA・音源・ZIP';
   $('#msg').innerHTML = msgs.map(m => `<div>${esc(m)}</div>`).join('');
-  $('#list').innerHTML = plan.map(p => `<div class="it">
+  $('#list').innerHTML = plan.map(p => { const c = p.chart, ed = editId === p.id; return `<div class="it${ed ? ' edit' : ''}" data-row="${esc(p.id)}">
     <div class="no">${p.n}</div>
-    <div>${p.label ? `<span class="lab">${p.label}</span>` : '<span class="lab x"></span>'}</div>
-    <input type="text" data-g="${esc(p.id)}" value="${esc(p.chart.group)}" aria-label="曲名">
-    <input type="text" class="au" data-a="${esc(p.id)}" value="${esc(p.chart.author)}" placeholder="作成者" aria-label="作成者">
-    <div class="src"><button class="vw" data-view="${esc(p.id)}">TJA</button><span>${esc((p.chart.dir ? p.chart.dir + '/' : '') + p.chart.file)}</span>${p.chart.audio ? `<span>♪ ${esc(p.audioName)}</span>` : '<span class="bad">♪ 音源なし</span>'}</div>
-  </div>`).join('');
+    ${p.label ? `<span class="lab">${p.label}</span>` : '<span class="lab x"></span>'}
+    ${ed ? `<div class="ed"><input type="text" data-g="${esc(p.id)}" value="${esc(c.group)}" aria-label="曲名"><input type="text" data-a="${esc(p.id)}" value="${esc(c.author)}" placeholder="作成者" aria-label="作成者"><small>${esc((c.dir ? c.dir + '/' : '') + c.file)}</small></div>`
+      : `<div class="t"><b>${esc(c.group)}</b><small>${esc(c.author || '作成者なし')} ・ ${c.audio ? '♪ ' + esc(p.audioName) : '<span class="bad">音源なし</span>'}</small></div>`}
+    <button class="vw" data-view="${esc(p.id)}">TJA</button>
+  </div>`; }).join('');
   if (pv === 'files') renderTree(plan);
   ['dlZip', 'dlJson', 'toPub', 'shuffle'].forEach(id => $('#' + id).disabled = !has);
   saveMeta();
 }
 /* 中身の確認 */
+let editId = null;
+$('#list').addEventListener('click', e => {
+  if (e.target.closest('input,button')) return;
+  const r = e.target.closest('[data-row]'); if (!r) return;
+  editId = editId === r.dataset.row ? null : r.dataset.row; render();
+  if (editId) { const f = $(`#list [data-g="${CSS.escape(editId)}"]`); if (f) f.focus(); }
+});
 let pv = 'order', sheetId = null, sheetMode = 'out';
 const kb = n => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
 const outText = p => transformTja(p.chart.text, { title: p.display, wave: p.audioName, dropSub: $('#dropSub').checked });
@@ -145,7 +152,7 @@ function renderTree(plan) {
   }).join('');
   $('#tree').innerHTML = `<div class="tr rt"><span>${esc(root)}/</span><small>${count}ファイル・${kb(total)}</small></div>${rows}`;
 }
-$$('#pv button').forEach(b => b.onclick = () => { pv = b.dataset.p; $$('#pv button').forEach(x => x.setAttribute('aria-pressed', x === b)); $('#list').hidden = pv !== 'order'; $('#tree').hidden = pv !== 'files'; render(); });
+$$('#packBody .ttl button.t').forEach(b => b.onclick = () => { pv = b.dataset.p; $$('#packBody .ttl button.t').forEach(x => x.setAttribute('aria-pressed', x === b)); $('#list').hidden = pv !== 'order'; $('#tree').hidden = pv !== 'files'; render(); });
 function openSheet(id) { sheetId = id; $('#sheet').hidden = false; document.body.style.overflow = 'hidden'; drawSheet(); }
 function closeSheet() { sheetId = null; $('#sheet').hidden = true; document.body.style.overflow = ''; }
 function drawSheet() {
@@ -164,10 +171,10 @@ addEventListener('keydown', e => { if (e.key === 'Escape' && sheetId) closeSheet
 $('#list').addEventListener('change', e => { const g = e.target.dataset.g; if (g) { charts.find(x => x.id === g).group = e.target.value; render(); } });
 $('#list').addEventListener('input', e => { const a = e.target.dataset.a; if (a) { charts.find(x => x.id === a).author = e.target.value; saveMeta(); } });
 ['#root', '#dropSub'].forEach(q => $(q).addEventListener('input', saveMeta));
-$('#dropSub').addEventListener('change', saveMeta);
+$('#dropSub').addEventListener('change', render);
 $('#prefix').addEventListener('change', render);
 $('#audioName').addEventListener('input', render);
-$$('#am button').forEach(b => b.onclick = () => { am = b.dataset.a; $$('#am button').forEach(x => x.setAttribute('aria-pressed', x === b)); $('#audioName').hidden = am !== 'fixed'; render(); });
+$('#amFixed').addEventListener('change', e => { am = e.target.checked ? 'fixed' : 'match'; render(); });
 $('#fFiles').onchange = e => { addFiles([...e.target.files]); e.target.value = ''; };
 $('#clear').onclick = () => { files = []; charts = []; order = []; msgs = []; render(); saveFiles(); closeSheet(); };
 $('#shuffle').onclick = () => shuffle();
@@ -205,9 +212,17 @@ $('#toPub').onclick = () => { fillSongs(); if (!$('#pName').value.trim()) $('#pN
 const H = Object.assign({ roomId: null, name: '', pass: '', songs: '', open: true, pubPass: null, scorers: [], startAt: null, endAt: null }, store('taikai-host') || {});
 const toLocal = ms => { if (!ms) return ''; const d = new Date(ms), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
 const fromLocal = v => { if (!v) return null; const t = new Date(v).getTime(); return isFinite(t) ? t : null; };
-function setTimes() { $('#pStart').value = toLocal(H.startAt); $('#pEnd').value = toLocal(H.endAt); }
+function tbShow() {
+  for (const [id, box] of [['pStart', 'tbStart'], ['pEnd', 'tbEnd']]) {
+    const t = fromLocal($('#' + id).value), b = $('#' + box);
+    b.classList.toggle('e', !t); b.querySelector('b').textContent = t ? `${new Date(t).getMonth() + 1}/${new Date(t).getDate()} ${String(new Date(t).getHours()).padStart(2, '0')}:${String(new Date(t).getMinutes()).padStart(2, '0')}` : 'なし';
+    b.querySelector('button').hidden = !t;
+  }
+  $('#songN').textContent = parseSongs($('#songs').value).length || '';
+}
+function setTimes() { $('#pStart').value = toLocal(H.startAt); $('#pEnd').value = toLocal(H.endAt); tbShow(); }
 $('#pName').value = H.name; $('#pPass').value = H.pass; $('#songs').value = H.songs; $('#pOpen').checked = H.open; setTimes();
-function saveH() { Object.assign(H, { name: $('#pName').value, pass: $('#pPass').value, songs: $('#songs').value, open: $('#pOpen').checked, startAt: fromLocal($('#pStart').value), endAt: fromLocal($('#pEnd').value) }); store('taikai-host', H); updPubBtn(); }
+function saveH() { Object.assign(H, { name: $('#pName').value, pass: $('#pPass').value, songs: $('#songs').value, open: $('#pOpen').checked, startAt: fromLocal($('#pStart').value), endAt: fromLocal($('#pEnd').value) }); store('taikai-host', H); updPubBtn(); tbShow(); }
 ['#pName', '#pPass', '#songs', '#pStart', '#pEnd'].forEach(s => $(s).addEventListener('input', saveH));
 $$('[data-clr]').forEach(b => b.onclick = () => { $('#' + b.dataset.clr).value = ''; saveH(); });
 function updPubBtn() { $('#pubBtn').textContent = H.roomId ? '更新' : '公開'; }
@@ -216,7 +231,7 @@ async function refreshMyRooms() {
   if (!(await ready)) { $('#myRooms').innerHTML = ''; return; }
   try { myList = await S.myRooms(); } catch (e) { myList = []; }
   $('#myRooms').innerHTML = myList.map(r => `<button class="chip" data-r="${esc(r.id)}" aria-pressed="${r.id === H.roomId}">${r.open ? '<i class="d"></i>' : ''}${esc(r.name || '無題')}</button>`).join('')
-    + `<button class="chip new" data-r="" aria-pressed="${!H.roomId}">＋</button>`;
+    + `<button class="chip dash" data-r="" aria-pressed="${!H.roomId}" aria-label="新しい大会">＋</button>`;
 }
 $('#myRooms').addEventListener('click', async e => {
   const b = e.target.closest('[data-r]'); if (!b) return;
@@ -273,15 +288,29 @@ function syncScorers() {
 let scorers = H.scorers && H.scorers.length ? H.scorers : [];
 function saveSc() { H.scorers = scorers; store('taikai-host', H); }
 function renderSc() {
-  $('#scs').innerHTML = scorers.map((s, i) => `<div class="s"><div class="h">${s.uid ? CLOUD : ''}<input type="text" data-n="${i}" value="${esc(s.name)}" aria-label="採点者名" ${s.uid ? 'readonly' : ''}>${s.uid ? '' : `<button data-x="${i}" aria-label="削除">×</button>`}</div><textarea data-t="${i}" rows="10" placeholder="71\n72\n74○" ${s.uid ? 'readonly' : ''}>${esc(s.text)}</textarea></div>`).join('')
-    + '<button class="add" id="addSc" aria-label="採点者を追加">＋</button>';
+  const n = parseSongs($('#songs').value).length;
+  $('#scs').innerHTML = scorers.map((sc, i) => { const c = parseScoreLines(sc.text).vals.filter(Boolean).length; return `<button class="chip" data-s="${i}">${sc.uid ? CLOUD : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>'}${esc(sc.name || '無名')}<span style="font-family:var(--num);opacity:.7">${c}/${n}</span></button>`; }).join('')
+    + '<button class="chip dash" id="addSc" aria-label="採点者を追加">＋</button>';
 }
-$('#scs').addEventListener('input', e => { const d = e.target.dataset; if (d.n != null) scorers[d.n].name = e.target.value; if (d.t != null) scorers[d.t].text = e.target.value; saveSc(); });
+let scIdx = null;
+function openSc(i) {
+  scIdx = i; const sc = scorers[i], ro = !!sc.uid;
+  $('#scT').textContent = ro ? '提出された採点' : '手入力の採点';
+  $('#scName').value = sc.name; $('#scText').value = sc.text; $('#scName').readOnly = ro; $('#scText').readOnly = ro; $('#scDel').hidden = ro;
+  $('#scSheet').hidden = false; document.body.style.overflow = 'hidden';
+  if (!ro && !sc.text) $('#scText').focus();
+}
+function closeSc() { scIdx = null; $('#scSheet').hidden = true; document.body.style.overflow = ''; renderSc(); }
 $('#scs').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  if (b.id === 'addSc') { scorers.push({ name: `採点者${scorers.filter(s => !s.uid).length + 1}`, text: '' }); renderSc(); saveSc(); $$('#scs textarea').pop().focus(); }
-  else if (b.dataset.x != null) { scorers.splice(+b.dataset.x, 1); renderSc(); saveSc(); }
+  if (b.id === 'addSc') { scorers.push({ name: `採点者${scorers.filter(s => !s.uid).length + 1}`, text: '' }); saveSc(); openSc(scorers.length - 1); }
+  else if (b.dataset.s != null) openSc(+b.dataset.s);
 });
+$('#scName').addEventListener('input', e => { if (scIdx != null && !scorers[scIdx].uid) { scorers[scIdx].name = e.target.value; saveSc(); } });
+$('#scText').addEventListener('input', e => { if (scIdx != null && !scorers[scIdx].uid) { scorers[scIdx].text = e.target.value; saveSc(); } });
+$('#scDel').onclick = () => { if (scIdx != null) { scorers.splice(scIdx, 1); saveSc(); } closeSc(); };
+$('#scX').onclick = closeSc;
+$('#scSheet').addEventListener('click', e => { if (e.target.id === 'scSheet') closeSc(); });
 $('#fJson').onchange = async e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
   try { const j = JSON.parse(await f.text()); $('#songs').value = (j.songs || []).sort((a, b) => a.order - b.order).map(songLine).join('\n'); saveH(); }
@@ -291,12 +320,14 @@ let lastText = '';
 $('#run').onclick = () => {
   const songs = parseSongs($('#songs').value);
   if (!songs.length) { view = 'pub'; show(); shake($('#songs')); return; }
+  if (!scorers.length) { shake($('#scs')); return; }
   const { rows, warns } = aggregate(songs, scorers), texts = rows.map(formatRow);
   lastText = texts.join('\n\n');
   $('#warns').innerHTML = warns.map(w => `<div>${esc(w)}</div>`).join('');
   $('#out').innerHTML = rows.map((r, k) => `<div class="cd${r.rank === 1 ? ' top' : ''}">
-    <div class="rk">${r.rank}<small>位</small></div>
-    <h3>${esc(r.name)}${r.author ? ` <span>/ ${esc(r.author)}</span>` : ''}</h3>
+    <div class="rk">${r.rank}</div>
+    <h3>${esc(r.name)}</h3>
+    <div class="au">${esc(r.author || '')}</div>
     <button class="btn cp" data-c="${k}" aria-label="コピー">${COPY}</button>
     <div class="st"><div>平均<b>${fmt2(r.mean)}</b></div><div>お気に入り<b>${r.favs}</b></div><div>標準偏差<b>${fmt2(r.sd)}</b></div><div>MAX<b>${r.maxes}</b></div></div>
     <div class="sv">${[...r.ents].sort((a, b) => b.v - a.v).map(e => `<span class="${e.fav ? 'f ' : ''}${e.max ? 'm' : ''}">${esc(e.v)}</span>`).join('')}</div>
@@ -354,8 +385,8 @@ async function join(r, pass, form) {
   J.sc = res.mine ? res.mine.scores.map(x => ({ v: x.v == null ? '' : String(x.v), fav: !!x.fav })) : (draft || []);
   if (res.mine) $('#jName').value = res.mine.name;
   if (lobbyOff) { lobbyOff(); lobbyOff = null; }
-  $('#lobby').hidden = true; $('#jroom').hidden = false; $('#jTitle').textContent = r.name || '無題';
-  $('#roster').innerHTML = (res.roster || []).map(n => `<span>${esc(n)}</span>`).join('');
+  $('#lobby').hidden = true; $('#jroom').hidden = false; $('#jTitle').textContent = r.name || '無題'; scrollTo(0, 0);
+  $('#roster').textContent = (res.roster || []).join(' ・ ');
   $('#rosterWrap').hidden = !(res.roster || []).length;
   renderJ(); show();
   return true;
@@ -419,7 +450,7 @@ async function restorePack() {
     if (m) {
       $('#root').value = m.root ?? $('#root').value; $('#prefix').checked = m.prefix ?? true; $('#dropSub').checked = !!m.dropSub;
       $('#audioName').value = m.audioName || 'song.ogg'; am = m.am || 'match';
-      $$('#am button').forEach(x => x.setAttribute('aria-pressed', x.dataset.a === am)); $('#audioName').hidden = am !== 'fixed';
+      $('#amFixed').checked = am === 'fixed';
     }
     if (f && f.length) { files = f; seed = (m && m.edits) || {}; order = (m && m.order) || []; rebuild(); seed = {}; }
   } catch (e) { storeErr(e); }
