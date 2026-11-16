@@ -7,7 +7,7 @@
 <script>
 // 新しい版が出ていたら、URL を変えて読み込み直す（ホーム画面のアプリでも古い画面が残らないように）
 (function () {
-  var V='1.6.0';
+  var V='1.7.0';
   function check() {
     fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
       if (!j.v || j.v === V) return;
@@ -25,7 +25,8 @@
 <style>
 :root{color-scheme:light dark;--bg:light-dark(#fff,#0a0a0a);--ink:light-dark(#0a0a0a,#fff);--mute:light-dark(#707070,#8c8c8c);--line:light-dark(#e2e2e2,#262626);--card:light-dark(#f3f3f3,#151515);--acc:#ffd60a;--on:#0a0a0a;--acc-ink:light-dark(#0a0a0a,#ffd60a);--num:"Barlow Condensed",sans-serif;--navh:calc(60px + env(safe-area-inset-bottom))}
 *,*::before,*::after{border-radius:0!important;box-sizing:border-box;min-width:0}
-body{margin:0;background:var(--bg);color:var(--ink);font:500 16px/1.5 "Zen Kaku Gothic New",system-ui,sans-serif;overflow-x:clip;-webkit-font-smoothing:antialiased}
+html{overflow-x:hidden;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{max-width:100%;margin:0;background:var(--bg);color:var(--ink);font:500 16px/1.5 "Zen Kaku Gothic New",system-ui,sans-serif;overflow-x:clip;-webkit-font-smoothing:antialiased}
 button,input,textarea{font:inherit;color:inherit}
 .wrap{max-width:860px;margin:0 auto;padding:0 max(4vw,16px)}
 [hidden]{display:none!important}
@@ -44,6 +45,7 @@ nav button[aria-current=page]{color:var(--acc);box-shadow:inset 0 3px 0 var(--ac
 .bar{position:fixed;left:0;right:0;bottom:var(--navh);z-index:5;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(12px);border-top:1px solid var(--line)}
 .bar .wrap{display:flex;gap:8px;padding-top:10px;padding-bottom:10px;align-items:center;justify-content:flex-end}
 .bar .sp{margin-right:auto}
+main,section,header,nav,.bar{max-width:100vw}
 main section{padding:14px 0 calc(var(--navh) + 90px)}
 /* common */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 16px;border:1.5px solid var(--line);background:var(--bg);font-weight:700;cursor:pointer;white-space:nowrap;transition:border-color .15s}
@@ -123,11 +125,11 @@ button.tr.fl{cursor:pointer}button.tr.fl:hover{background:var(--card)}button.tr.
 .fld{display:grid;grid-template-columns:5.5em minmax(0,1fr);align-items:center;gap:8px;margin-bottom:8px}
 .fld>span{font-size:13px;font-weight:700;color:var(--mute)}
 .tw{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.tb{position:relative;border:1.5px solid var(--ink);min-height:60px;padding:6px 40px 6px 10px}
+.tb{position:relative;overflow:hidden;border:1.5px solid var(--ink);min-height:60px;padding:6px 40px 6px 10px}
 .tb.e{border-style:dashed;border-color:var(--line)}
 .tb small{display:block;font-size:12px;font-weight:700;color:var(--mute)}
 .tb b{font:700 21px/1.2 var(--num)}.tb.e b{color:var(--mute);font-family:inherit;font-size:15px}
-.tb input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.tb input{position:absolute;inset:0;opacity:0;width:100%;height:100%;min-width:0;max-width:100%;cursor:pointer;-webkit-appearance:none;appearance:none}
 .tb button{position:absolute;right:0;top:0;bottom:0;width:38px;border:0;background:none;color:var(--mute);font-size:18px;cursor:pointer;z-index:1}
 .stat{display:flex;align-items:center;gap:12px;background:var(--ink);color:var(--bg);padding:10px 12px;margin-top:14px}
 .stat .n{margin-left:auto;font:italic 800 30px/1 var(--num);color:var(--acc)}
@@ -205,10 +207,6 @@ button.tr.fl{cursor:pointer}button.tr.fl:hover{background:var(--card)}button.tr.
   <div id="packBody" hidden>
     <div class="chips set">
       <label class="ci"><input type="text" id="root" value="譜面パック" aria-label="パック名"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></label>
-      <label class="tgl"><input type="checkbox" id="prefix" checked><span class="chip"><span class="on">番号付き</span><span class="off">番号なし</span></span></label>
-      <label class="tgl"><input type="checkbox" id="dropSub"><span class="chip"><span class="on">SUBTITLE削除</span><span class="off">SUBTITLE残す</span></span></label>
-      <label class="tgl"><input type="checkbox" id="amFixed"><span class="chip"><span class="on">音源＝統一</span><span class="off">音源＝譜面名</span></span></label>
-      <label class="ci" id="anWrap" hidden><input type="text" id="audioName" value="song.ogg" aria-label="統一する音源名"></label>
     </div>
     <div class="ttl"><button class="t" data-p="order" aria-pressed="true">演奏順</button>・<button class="t" data-p="files" aria-pressed="false">ファイル一覧</button></div>
     <div id="list"></div>
@@ -226,7 +224,7 @@ button.tr.fl{cursor:pointer}button.tr.fl:hover{background:var(--card)}button.tr.
     <div class="tb" id="tbStart"><small>開始</small><b></b><input type="datetime-local" id="pStart" aria-label="開始"><button type="button" data-clr="pStart" aria-label="開始をクリア">×</button></div>
     <div class="tb" id="tbEnd"><small>締切</small><b></b><input type="datetime-local" id="pEnd" aria-label="締切"><button type="button" data-clr="pEnd" aria-label="締切をクリア">×</button></div>
   </div>
-  <div class="ttl">曲目 <span id="songN"></span><label class="chip end">対応表<input type="file" id="fJson" accept=".json,application/json" hidden></label></div>
+  <div class="ttl">曲目 <span id="songN"></span></div>
   <textarea id="songs" rows="6" placeholder="曲名【A】 / 作成者" aria-label="曲目"></textarea>
   <div class="stat"><label class="sw"><input type="checkbox" id="pOpen" checked>公開中</label><span class="n" id="subN">0</span><small>件</small></div>
   <div class="who" id="who"></div>
@@ -272,7 +270,6 @@ button.tr.fl{cursor:pointer}button.tr.fl:hover{background:var(--card)}button.tr.
 
 <div class="bar" id="barPack" hidden><div class="wrap">
   <button class="btn sp" id="shuffle" aria-label="シャッフル"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg></button>
-  <button class="btn" id="dlJson">対応表</button>
   <button class="btn" id="toPub">公開へ</button>
   <button class="btn pri" id="dlZip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M6 10l6 6 6-6M5 20h14"/></svg>ZIP</button>
 </div></div>
@@ -295,7 +292,7 @@ button.tr.fl{cursor:pointer}button.tr.fl:hover{background:var(--card)}button.tr.
   <button data-v="judge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>評価</button>
 </div></nav>
 
-<script src="core.js?v=1.6.0"></script>
-<script type="module" src="app.js?v=1.6.0"></script>
+<script src="core.js?v=1.7.0"></script>
+<script type="module" src="app.js?v=1.7.0"></script>
 </body>
 </html>

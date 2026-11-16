@@ -132,7 +132,7 @@ function sjNorm(s) { // Shift_JISで表せる文字に揃える（ファイル�
   for (const ch of s) { const cp = ch.codePointAt(0); o += cp < 0x80 || m.has(ch) ? ch : m.has(SJ_FALLBACK[ch]) ? SJ_FALLBACK[ch] : '_'; }
   return o;
 }
-function makePlan(charts, order, opt) { // opt: {prefix, audioMode, audioName}
+function makePlan(charts, order, opt) { // opt: {prefix, audioMode, audioName, flat}
   const byId = new Map(charts.map(c => [c.id, c]));
   const count = {}, seen = {}, used = new Set();
   for (const id of order) { const g = sjNorm(byId.get(id).group.trim()); count[g] = (count[g] || 0) + 1; }
@@ -142,10 +142,11 @@ function makePlan(charts, order, opt) { // opt: {prefix, audioMode, audioName}
     if (count[g] >= 2) { label = letters(seen[g] || 0); seen[g] = (seen[g] || 0) + 1; }
     const display = label ? `${g}【${label}】` : g;
     const base = safeName(label ? `${g} ${label}` : g);
+    const ext = c.audio ? (c.audio.name.match(/\.[^.]+$/) || ['.ogg'])[0].toLowerCase() : '.ogg';
+    if (opt.flat) return { id, n: n + 1, label, display, base, folder: '', audioName: safeName(g) + ext, chart: c };
     let folder = (opt.prefix ? String(n + 1).padStart(2, '0') + ' ' : '') + base, k = 2;
     while (used.has(folder)) folder = `${opt.prefix ? String(n + 1).padStart(2, '0') + ' ' : ''}${base} (${k++})`;
     used.add(folder);
-    const ext = c.audio ? (c.audio.name.match(/\.[^.]+$/) || ['.ogg'])[0].toLowerCase() : '.ogg';
     let audioName = base + ext;
     if (opt.audioMode === 'fixed' && opt.audioName.trim()) { audioName = safeName(opt.audioName.trim()); if (!/\.[^.]+$/.test(audioName)) audioName += ext; }
     return { id, n: n + 1, label, display, base, folder, audioName, chart: c };

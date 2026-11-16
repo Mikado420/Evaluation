@@ -1,4 +1,4 @@
-const VER = '1.6.0';
+const VER = '1.7.0';
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const store = (k, v) => { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || 'null'); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } };
@@ -69,11 +69,11 @@ function saveMeta() {
   if (restoring) return;
   clearTimeout(metaT);
   metaT = setTimeout(() => IDB.set('packmeta', {
-    root: $('#root').value, prefix: $('#prefix').checked, dropSub: $('#dropSub').checked, am, audioName: $('#audioName').value,
+    root: $('#root').value,
     order, edits: Object.fromEntries(charts.map(c => [c.id, { group: c.group, author: c.author }]))
   }).catch(storeErr), 300);
 }
-let files = [], charts = [], order = [], msgs = [], am = 'match';
+let files = [], charts = [], order = [], msgs = [];
 const AUDIO = /\.(ogg|mp3|wav|opus|flac)$/i;
 const JUNK = /(^|\/)(__MACOSX\/|\.DS_Store$|\._|Thumbs\.db$)/;
 async function addFiles(list) {
@@ -111,11 +111,18 @@ function shuffle(r = true) {
   for (let i = order.length - 1; i > 0; i--) { const j = rnd[i] % (i + 1); [order[i], order[j]] = [order[j], order[i]]; }
   if (r) render();
 }
-const opt = () => ({ prefix: $('#prefix').checked, audioMode: am, audioName: $('#audioName').value });
+// 全譜面が同じ曲ならフォルダ分けせず、音源1つを共有する
+const isFlat = () => charts.length > 1 && new Set(charts.map(c => sjNorm(c.group.trim()))).size === 1;
+const opt = () => ({ prefix: true, audioMode: 'match', audioName: '', flat: isFlat() });
+const filePath = p => (p.folder ? p.folder + '/' : '');
+const sameAudio = () => { const a = charts.filter(c => c.audio).map(c => c.audio.data); return a.every(d => d.length === a[0].length && d.every((x, i) => x === a[0][i])); };
 function render() {
   const plan = makePlan(charts, order, opt()), n = charts.length, g = new Set(plan.map(p => p.chart.group.trim())).size, has = n > 0;
   $('#drop').classList.toggle('mini', has); $('#clear').hidden = !has; $('#packBody').hidden = !has;
-  $('#addBtn').firstChild.textContent = has ? '追加' : 'ファイル'; $('#anWrap').hidden = am !== 'fixed';
+  $('#addBtn').firstChild.textContent = has ? '追加' : 'ファイル';
+  if (has && isFlat() && !sameAudio()) msgs = [...msgs.filter(m => !m.startsWith('音源')), '音源が譜面ごとに異なります。1曲目の音源を共有します'];
+  else msgs = msgs.filter(m => !m.startsWith('音源'));
+  $('#msg').innerHTML = msgs.map(m => `<div>${esc(m)}</div>`).join('');
   if (view === 'pack') $('#barPack').hidden = !has;
   $('#dropT').innerHTML = has ? `<span class="cnt">${n}</span>譜面 <span class="cnt">${g}</span>曲` : 'TJA・音源・ZIP';
   $('#msg').innerHTML = msgs.map(m => `<div>${esc(m)}</div>`).join('');
@@ -127,7 +134,7 @@ function render() {
     <button class="vw" data-view="${esc(p.id)}">TJA</button>
   </div>`; }).join('');
   if (pv === 'files') renderTree(plan);
-  ['dlZip', 'dlJson', 'toPub', 'shuffle'].forEach(id => $('#' + id).disabled = !has);
+  ['dlZip', 'toPub', 'shuffle'].forEach(id => $('#' + id).disabled = !has);
   saveMeta();
 }
 /* 中身の確認 */
@@ -140,24 +147,30 @@ $('#list').addEventListener('click', e => {
 });
 let pv = 'order', sheetId = null, sheetMode = 'out';
 const kb = n => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
-const outText = p => transformTja(p.chart.text, { title: p.display, wave: p.audioName, dropSub: $('#dropSub').checked });
+const outText = p => transformTja(p.chart.text, { title: p.display, wave: p.audioName, dropSub: false });
 function renderTree(plan) {
-  const root = rootName(); let total = 0, count = 0;
-  const rows = plan.map(p => {
-    const t = encodeSJIS(outText(p)).length, a = p.chart.audio ? p.chart.audio.data.length : 0;
-    total += t + a; count += p.chart.audio ? 2 : 1;
-    return `<div class="tr fd"><span>${esc(p.folder)}/</span></div>
-      <button class="tr fl" data-view="${esc(p.id)}"><span>${esc(p.base)}.tja</span><small>${kb(t)}</small></button>
-      ${p.chart.audio ? `<div class="tr fl au"><span>${esc(p.audioName)}</span><small>${kb(a)}</small></div>` : ''}`;
-  }).join('');
-  $('#tree').innerHTML = `<div class="tr rt"><span>${esc(root)}/</span><small>${count}ファイル・${kb(total)}</small></div>${rows}`;
+  const root = rootName(); let total = 0, count = 0, html = '';
+  if (plan.length && plan[0].folder === '') {
+    for (const p of plan) { const t = encodeSJIS(outText(p)).length; total += t; count++; html += `<button class="tr fl" data-view="${esc(p.id)}"><span>${esc(p.base)}.tja</span><small>${kb(t)}</small></button>`; }
+    const a = plan.find(p => p.chart.audio);
+    if (a) { const n = a.chart.audio.data.length; total += n; count++; html += `<div class="tr fl au"><span>${esc(a.audioName)}</span><small>${kb(n)}</small></div>`; }
+  } else {
+    html = plan.map(p => {
+      const t = encodeSJIS(outText(p)).length, n = p.chart.audio ? p.chart.audio.data.length : 0;
+      total += t + n; count += p.chart.audio ? 2 : 1;
+      return `<div class="tr fd"><span>${esc(p.folder)}/</span></div>
+        <button class="tr fl" data-view="${esc(p.id)}"><span>${esc(p.base)}.tja</span><small>${kb(t)}</small></button>
+        ${p.chart.audio ? `<div class="tr fl au"><span>${esc(p.audioName)}</span><small>${kb(n)}</small></div>` : ''}`;
+    }).join('');
+  }
+  $('#tree').innerHTML = `<div class="tr rt"><span>${esc(root)}/</span><small>${count}ファイル・${kb(total)}</small></div>${html}`;
 }
 $$('#packBody .ttl button.t').forEach(b => b.onclick = () => { pv = b.dataset.p; $$('#packBody .ttl button.t').forEach(x => x.setAttribute('aria-pressed', x === b)); $('#list').hidden = pv !== 'order'; $('#tree').hidden = pv !== 'files'; render(); });
 function openSheet(id) { sheetId = id; $('#sheet').hidden = false; document.body.style.overflow = 'hidden'; drawSheet(); }
 function closeSheet() { sheetId = null; $('#sheet').hidden = true; document.body.style.overflow = ''; }
 function drawSheet() {
   const p = makePlan(charts, order, opt()).find(x => x.id === sheetId); if (!p) return closeSheet();
-  $('#shT').textContent = sheetMode === 'out' ? `${p.folder}/${p.base}.tja` : (p.chart.dir ? p.chart.dir + '/' : '') + p.chart.file;
+  $('#shT').textContent = sheetMode === 'out' ? `${filePath(p)}${p.base}.tja` : (p.chart.dir ? p.chart.dir + '/' : '') + p.chart.file;
   $$('#shSeg button').forEach(x => x.setAttribute('aria-pressed', x.dataset.s === sheetMode));
   const lines = (sheetMode === 'out' ? outText(p) : p.chart.text).split(/\r?\n/);
   $('#shB').innerHTML = lines.map((l, i) => `<span class="ln">${i + 1}</span>${esc(l) || ' '}`).join('\n');
@@ -170,11 +183,7 @@ $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeS
 addEventListener('keydown', e => { if (e.key === 'Escape' && sheetId) closeSheet(); });
 $('#list').addEventListener('change', e => { const g = e.target.dataset.g; if (g) { charts.find(x => x.id === g).group = e.target.value; render(); } });
 $('#list').addEventListener('input', e => { const a = e.target.dataset.a; if (a) { charts.find(x => x.id === a).author = e.target.value; saveMeta(); } });
-['#root', '#dropSub'].forEach(q => $(q).addEventListener('input', saveMeta));
-$('#dropSub').addEventListener('change', render);
-$('#prefix').addEventListener('change', render);
-$('#audioName').addEventListener('input', render);
-$('#amFixed').addEventListener('change', e => { am = e.target.checked ? 'fixed' : 'match'; render(); });
+$('#root').addEventListener('input', saveMeta);
 $('#fFiles').onchange = e => { addFiles([...e.target.files]); e.target.value = ''; };
 $('#clear').onclick = () => { files = []; charts = []; order = []; msgs = []; render(); saveFiles(); closeSheet(); };
 $('#shuffle').onclick = () => shuffle();
@@ -197,15 +206,14 @@ const mapping = () => makePlan(charts, order, opt()).map(p => ({ order: p.n, lab
 const songLine = m => `${m.title}${m.author ? ' / ' + m.author : ''}`;
 function fillSongs() { $('#songs').value = mapping().map(songLine).join('\n'); saveH(); }
 $('#dlZip').onclick = () => {
-  const root = rootName(), dropSub = $('#dropSub').checked, out = [];
+  const root = rootName(), out = []; let shared = false;
   for (const p of makePlan(charts, order, opt())) {
-    out.push({ path: `${root}/${p.folder}/${p.base}.tja`, data: encodeSJIS(transformTja(p.chart.text, { title: p.display, wave: p.audioName, dropSub })) });
-    if (p.chart.audio) out.push({ path: `${root}/${p.folder}/${p.audioName}`, data: p.chart.audio.data });
+    out.push({ path: `${root}/${filePath(p)}${p.base}.tja`, data: encodeSJIS(outText(p)) });
+    if (p.chart.audio && !(p.folder === '' && shared)) { out.push({ path: `${root}/${filePath(p)}${p.audioName}`, data: p.chart.audio.data }); if (p.folder === '') shared = true; }
   }
   fillSongs();
   save(root + '.zip', new Blob(makeZip(out), { type: 'application/zip' }));
 };
-$('#dlJson').onclick = () => { fillSongs(); save(rootName() + '_対応表.json', new Blob([JSON.stringify({ pack: rootName(), songs: mapping() }, null, 2)], { type: 'application/json' })); };
 $('#toPub').onclick = () => { fillSongs(); if (!$('#pName').value.trim()) $('#pName').value = $('#root').value; saveH(); view = 'pub'; show(); };
 
 /* ===== 02 公開 ===== */
@@ -311,11 +319,6 @@ $('#scText').addEventListener('input', e => { if (scIdx != null && !scorers[scId
 $('#scDel').onclick = () => { if (scIdx != null) { scorers.splice(scIdx, 1); saveSc(); } closeSc(); };
 $('#scX').onclick = closeSc;
 $('#scSheet').addEventListener('click', e => { if (e.target.id === 'scSheet') closeSc(); });
-$('#fJson').onchange = async e => {
-  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-  try { const j = JSON.parse(await f.text()); $('#songs').value = (j.songs || []).sort((a, b) => a.order - b.order).map(songLine).join('\n'); saveH(); }
-  catch (er) { shake($('#songs')); }
-};
 let lastText = '';
 $('#run').onclick = () => {
   const songs = parseSongs($('#songs').value);
@@ -448,9 +451,7 @@ async function restorePack() {
     const [recs, m] = await Promise.all([IDB.allFiles(), IDB.get('packmeta')]);
     const f = await Promise.all((recs || []).map(async r => ({ path: r.path, data: new Uint8Array(await r.blob.arrayBuffer()) })));
     if (m) {
-      $('#root').value = m.root ?? $('#root').value; $('#prefix').checked = m.prefix ?? true; $('#dropSub').checked = !!m.dropSub;
-      $('#audioName').value = m.audioName || 'song.ogg'; am = m.am || 'match';
-      $('#amFixed').checked = am === 'fixed';
+      $('#root').value = m.root ?? $('#root').value;
     }
     if (f && f.length) { files = f; seed = (m && m.edits) || {}; order = (m && m.order) || []; rebuild(); seed = {}; }
   } catch (e) { storeErr(e); }
