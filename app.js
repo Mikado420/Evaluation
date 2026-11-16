@@ -1,4 +1,4 @@
-const VER = '1.4.0';
+const VER = '1.5.0';
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const store = (k, v) => { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || 'null'); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } };
@@ -46,25 +46,40 @@ addEventListener('hashchange', fromHash);
 // 端末内保存（音源を含むので IndexedDB）
 const IDB = {
   db: null,
-  open() { return this.db || (this.db = new Promise((res, rej) => { const r = indexedDB.open('taikai', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); })); },
-  async get(k) { const db = await this.open(); return new Promise((res, rej) => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); },
-  async set(k, v) { const db = await this.open(); return new Promise((res, rej) => { const t = db.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); }
+  open() {
+    return this.db || (this.db = new Promise((res, rej) => {
+      const r = indexedDB.open('taikai', 2);
+      r.onupgradeneeded = () => { const d = r.result; if (!d.objectStoreNames.contains('kv')) d.createObjectStore('kv'); if (!d.objectStoreNames.contains('files')) d.createObjectStore('files', { keyPath: 'path' }); };
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    }));
+  },
+  async tx(store, mode, fn) { const db = await this.open(); return new Promise((res, rej) => { const t = db.transaction(store, mode), o = fn(t.objectStore(store)); t.oncomplete = () => res(o && o.result); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); }); },
+  get(k) { return this.tx('kv', 'readonly', st => st.get(k)); },
+  set(k, v) { return this.tx('kv', 'readwrite', st => { st.put(v, k); }); },
+  allFiles() { return this.tx('files', 'readonly', st => st.getAll()); },
+  putFiles(list) { return this.tx('files', 'readwrite', st => { for (const f of list) st.put({ path: f.path, blob: new Blob([f.data]) }); }); },
+  clearFiles() { return this.tx('files', 'readwrite', st => { st.clear(); }); }
 };
+function storeErr(e) { console.warn(e); msgs = [...msgs.filter(m => !m.startsWith('端末')), '端末に保存できませんでした（容量不足の可能性があります）']; $('#msg').innerHTML = msgs.map(m => `<div>${esc(m)}</div>`).join(''); }
+let persistAsked = false;
+function saveFiles(added) {
+  if (!persistAsked && navigator.storage && navigator.storage.persist) { persistAsked = true; navigator.storage.persist().catch(() => {}); }
+  (added ? IDB.putFiles(added) : IDB.clearFiles()).catch(storeErr);
+}
 let seed = {}, restoring = true, metaT = null;
-const saveFiles = () => IDB.set('files', files).catch(() => {});
 function saveMeta() {
   if (restoring) return;
   clearTimeout(metaT);
   metaT = setTimeout(() => IDB.set('packmeta', {
     root: $('#root').value, prefix: $('#prefix').checked, dropSub: $('#dropSub').checked, am, audioName: $('#audioName').value,
     order, edits: Object.fromEntries(charts.map(c => [c.id, { group: c.group, author: c.author }]))
-  }).catch(() => {}), 300);
+  }).catch(storeErr), 300);
 }
 let files = [], charts = [], order = [], msgs = [], am = 'match';
 const AUDIO = /\.(ogg|mp3|wav|opus|flac)$/i;
 const JUNK = /(^|\/)(__MACOSX\/|\.DS_Store$|\._|Thumbs\.db$)/;
 async function addFiles(list) {
-  msgs = [];
+  msgs = []; const n0 = files.length;
   for (const f of list) {
     if (JUNK.test(f.name)) continue;
     const data = new Uint8Array(await f.arrayBuffer());
@@ -73,7 +88,7 @@ async function addFiles(list) {
       catch (e) { msgs.push(`${f.name}：読み込めません`); }
     } else files.push({ path: f.name, data });
   }
-  rebuild(); saveFiles();
+  rebuild(); saveFiles(files.slice(n0));
 }
 function rebuild() {
   const prev = new Map(charts.map(c => [c.id, c])), dirs = new Map();
@@ -109,11 +124,43 @@ function render() {
     <div>${p.label ? `<span class="lab">${p.label}</span>` : '<span class="lab x"></span>'}</div>
     <input type="text" data-g="${esc(p.id)}" value="${esc(p.chart.group)}" aria-label="曲名">
     <input type="text" class="au" data-a="${esc(p.id)}" value="${esc(p.chart.author)}" placeholder="作成者" aria-label="作成者">
-    <div class="src"><span>${esc((p.chart.dir ? p.chart.dir + '/' : '') + p.chart.file)}</span>${p.chart.audio ? `<span>♪ ${esc(p.audioName)}</span>` : '<span class="bad">♪ 音源なし</span>'}</div>
+    <div class="src"><button class="vw" data-view="${esc(p.id)}">TJA</button><span>${esc((p.chart.dir ? p.chart.dir + '/' : '') + p.chart.file)}</span>${p.chart.audio ? `<span>♪ ${esc(p.audioName)}</span>` : '<span class="bad">♪ 音源なし</span>'}</div>
   </div>`).join('');
+  if (pv === 'files') renderTree(plan);
   ['dlZip', 'dlJson', 'toPub', 'shuffle'].forEach(id => $('#' + id).disabled = !has);
   saveMeta();
 }
+/* 中身の確認 */
+let pv = 'order', sheetId = null, sheetMode = 'out';
+const kb = n => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
+const outText = p => transformTja(p.chart.text, { title: p.display, wave: p.audioName, dropSub: $('#dropSub').checked });
+function renderTree(plan) {
+  const root = rootName(); let total = 0, count = 0;
+  const rows = plan.map(p => {
+    const t = encodeSJIS(outText(p)).length, a = p.chart.audio ? p.chart.audio.data.length : 0;
+    total += t + a; count += p.chart.audio ? 2 : 1;
+    return `<div class="tr fd"><span>${esc(p.folder)}/</span></div>
+      <button class="tr fl" data-view="${esc(p.id)}"><span>${esc(p.base)}.tja</span><small>${kb(t)}</small></button>
+      ${p.chart.audio ? `<div class="tr fl au"><span>${esc(p.audioName)}</span><small>${kb(a)}</small></div>` : ''}`;
+  }).join('');
+  $('#tree').innerHTML = `<div class="tr rt"><span>${esc(root)}/</span><small>${count}ファイル・${kb(total)}</small></div>${rows}`;
+}
+$$('#pv button').forEach(b => b.onclick = () => { pv = b.dataset.p; $$('#pv button').forEach(x => x.setAttribute('aria-pressed', x === b)); $('#list').hidden = pv !== 'order'; $('#tree').hidden = pv !== 'files'; render(); });
+function openSheet(id) { sheetId = id; $('#sheet').hidden = false; document.body.style.overflow = 'hidden'; drawSheet(); }
+function closeSheet() { sheetId = null; $('#sheet').hidden = true; document.body.style.overflow = ''; }
+function drawSheet() {
+  const p = makePlan(charts, order, opt()).find(x => x.id === sheetId); if (!p) return closeSheet();
+  $('#shT').textContent = sheetMode === 'out' ? `${p.folder}/${p.base}.tja` : (p.chart.dir ? p.chart.dir + '/' : '') + p.chart.file;
+  $$('#shSeg button').forEach(x => x.setAttribute('aria-pressed', x.dataset.s === sheetMode));
+  const lines = (sheetMode === 'out' ? outText(p) : p.chart.text).split(/\r?\n/);
+  $('#shB').innerHTML = lines.map((l, i) => `<span class="ln">${i + 1}</span>${esc(l) || ' '}`).join('\n');
+  $('#shE').textContent = sheetMode === 'out' ? 'Shift_JIS' : p.chart.enc;
+}
+document.addEventListener('click', e => { const v = e.target.closest('[data-view]'); if (v) openSheet(v.dataset.view); });
+$$('#shSeg button').forEach(b => b.onclick = () => { sheetMode = b.dataset.s; drawSheet(); });
+$('#shX').onclick = closeSheet;
+$('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet(); });
+addEventListener('keydown', e => { if (e.key === 'Escape' && sheetId) closeSheet(); });
 $('#list').addEventListener('change', e => { const g = e.target.dataset.g; if (g) { charts.find(x => x.id === g).group = e.target.value; render(); } });
 $('#list').addEventListener('input', e => { const a = e.target.dataset.a; if (a) { charts.find(x => x.id === a).author = e.target.value; saveMeta(); } });
 ['#root', '#dropSub'].forEach(q => $(q).addEventListener('input', saveMeta));
@@ -122,7 +169,7 @@ $('#prefix').addEventListener('change', render);
 $('#audioName').addEventListener('input', render);
 $$('#am button').forEach(b => b.onclick = () => { am = b.dataset.a; $$('#am button').forEach(x => x.setAttribute('aria-pressed', x === b)); $('#audioName').hidden = am !== 'fixed'; render(); });
 $('#fFiles').onchange = e => { addFiles([...e.target.files]); e.target.value = ''; };
-$('#clear').onclick = () => { files = []; charts = []; order = []; msgs = []; render(); saveFiles(); };
+$('#clear').onclick = () => { files = []; charts = []; order = []; msgs = []; render(); saveFiles(); closeSheet(); };
 $('#shuffle').onclick = () => shuffle();
 const dz = $('#drop');
 ['dragenter', 'dragover'].forEach(t => dz.addEventListener(t, e => { e.preventDefault(); dz.classList.add('on'); }));
@@ -367,14 +414,15 @@ $('#jSend').onclick = async e => {
 
 async function restorePack() {
   try {
-    const [f, m] = await Promise.all([IDB.get('files'), IDB.get('packmeta')]);
+    const [recs, m] = await Promise.all([IDB.allFiles(), IDB.get('packmeta')]);
+    const f = await Promise.all((recs || []).map(async r => ({ path: r.path, data: new Uint8Array(await r.blob.arrayBuffer()) })));
     if (m) {
       $('#root').value = m.root ?? $('#root').value; $('#prefix').checked = m.prefix ?? true; $('#dropSub').checked = !!m.dropSub;
       $('#audioName').value = m.audioName || 'song.ogg'; am = m.am || 'match';
       $$('#am button').forEach(x => x.setAttribute('aria-pressed', x.dataset.a === am)); $('#audioName').hidden = am !== 'fixed';
     }
     if (f && f.length) { files = f; seed = (m && m.edits) || {}; order = (m && m.order) || []; rebuild(); seed = {}; }
-  } catch (e) {}
+  } catch (e) { storeErr(e); }
   restoring = false; render();
 }
 renderSc(); render(); updPubBtn(); fromHash(); watch(); restorePack();
