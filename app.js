@@ -1,4 +1,4 @@
-const VER = '1.7.1';
+const VER = '1.7.2';
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const store = (k, v) => { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || 'null'); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } };
@@ -302,7 +302,7 @@ function renderSubs() {
   $('#subN').textContent = subs.length;
   $('#who').innerHTML = subs.map(s => `<span>${esc(s.name)}</span>`).join('');
 }
-const subText = s => (s.scores || []).map(x => x == null || x.v == null || x.v === '' ? '-' : x.v + (x.fav ? '○' : '')).join('\n');
+const subText = s => (s.scores || []).map(x => x == null || x.v == null || x.v === '' ? '自譜面' : x.v + (x.fav ? '○' : '')).join('\n');
 function syncScorers() {
   const manual = scorers.filter(s => !s.uid);
   scorers = [...subs.map(s => ({ uid: s.uid, name: s.name, text: subText(s) })), ...manual];

@@ -7,7 +7,7 @@
 <script>
 // 新しい版が出ていたら、URL を変えて読み込み直す（ホーム画面のアプリでも古い画面が残らないように）
 (function () {
-  var V='1.7.1';
+  var V='1.7.2';
   function check() {
     fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
       if (!j.v || j.v === V) return;
@@ -266,7 +266,7 @@ button.tr.fl{cursor:pointer}button.tr.fl:hover{background:var(--card)}button.tr.
   <div class="sh-h"><b id="scT"></b><button class="btn" id="scDel" aria-label="削除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button><button class="btn" id="scX" aria-label="閉じる"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
   <div class="sh-b">
     <label class="fld"><span>採点者</span><input type="text" id="scName"></label>
-    <textarea id="scText" rows="12" placeholder="71&#10;72&#10;74○" aria-label="点数"></textarea>
+    <textarea id="scText" rows="12" placeholder="71&#10;自譜面&#10;74○" aria-label="点数"></textarea>
   </div>
 </div></div>
 
@@ -294,7 +294,7 @@ button.tr.fl{cursor:pointer}button.tr.fl:hover{background:var(--card)}button.tr.
   <button data-v="judge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>評価</button>
 </div></nav>
 
-<script src="core.js?v=1.7.1"></script>
-<script type="module" src="app.js?v=1.7.1"></script>
+<script src="core.js?v=1.7.2"></script>
+<script type="module" src="app.js?v=1.7.2"></script>
 </body>
 </html>

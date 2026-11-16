@@ -1,7 +1,7 @@
 // 譜面大会ツール API（Cloudflare Workers + D1）
 // D1 のバインディング名は DB。テーブルは初回アクセス時に自動で作られます。
 
-const VERSION = '1.7.1';
+const VERSION = '1.7.2';
 
 const HEAD = {
   'Access-Control-Allow-Origin': '*',
