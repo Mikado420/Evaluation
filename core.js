@@ -201,14 +201,41 @@ function aggregate(songs, scorers) {
   return { rows, warns };
 }
 const fmt2 = x => x == null ? '―' : (Math.round(x * 100) / 100).toFixed(2);
-function formatRow(r) {
+const fmt3 = x => x == null ? '―' : (Math.round(x * 1000) / 1000).toFixed(3);
+// 大会全体の数値と、各項目の最大・最小（同値はすべて対象）
+function summarize(rows) {
+  const scored = rows.filter(r => r.ents.length), all = scored.flatMap(r => r.ents.map(e => e.v));
+  const r3 = x => Math.round(x * 1000) / 1000;
+  const sds = scored.map(r => r3(r.sd));
+  const favMax = Math.max(0, ...rows.map(r => r.favs)), maxMax = Math.max(0, ...rows.map(r => r.maxes));
+  return {
+    mean: all.length ? all.reduce((a, b) => a + b, 0) / all.length : null,
+    sdMean: scored.length ? scored.reduce((a, r) => a + r.sd, 0) / scored.length : null,
+    favTotal: rows.reduce((a, r) => a + r.favs, 0),
+    favMax: favMax > 0 ? favMax : null, maxMax: maxMax > 0 ? maxMax : null,
+    sdMax: scored.length > 1 ? Math.max(...sds) : null, sdMin: scored.length > 1 ? Math.min(...sds) : null
+  };
+}
+function tags(r, S) {
+  const sd = r.ents.length ? Math.round(r.sd * 1000) / 1000 : null;
+  return {
+    favs: S && S.favMax != null && r.favs === S.favMax ? 'MAX' : '',
+    maxes: S && S.maxMax != null && r.maxes === S.maxMax ? 'MAX' : '',
+    sd: !S || sd == null ? '' : sd === S.sdMax ? 'MAX' : sd === S.sdMin ? 'min' : ''
+  };
+}
+function formatSummary(S) {
+  return `## 全体平均：${fmt3(S.mean)}\n## 標準偏差平均：${fmt3(S.sdMean)}\n## 総お気に入り数：${S.favTotal}`;
+}
+function formatRow(r, S) {
   const toks = [...r.ents].sort((a, b) => b.v - a.v).map(e => {
     let t = String(e.v);
     if (e.max) t = `**${t}**`;
     if (e.fav) t = `__${t}__`;
     return t;
   });
-  return `# 【${r.rank}位】${r.name}${r.author ? ' / ' + r.author : ''}\n## 平均点：${fmt2(r.mean)}\nお気に入り：${r.favs}\n標準偏差：${fmt2(r.sd)}\nMAX：${r.maxes}\n\n${toks.join(' ')}`;
+  const T = tags(r, S), tg = x => x ? ` (${x})` : '';
+  return `# 【${r.rank}位】${r.name}${r.author ? ' / ' + r.author : ''}\n## 平均点：${fmt3(r.mean)}\nお気に入り：${r.favs}${tg(T.favs)}\n標準偏差：${fmt3(r.sd)}${tg(T.sd)}\nMAX：${r.maxes}${tg(T.maxes)}\n\n${toks.join(' ')}`;
 }
 
 

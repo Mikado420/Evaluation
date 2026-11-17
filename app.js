@@ -1,4 +1,4 @@
-const VER = '1.7.3';
+const VER = '1.8.0';
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const store = (k, v) => { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || 'null'); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } };
@@ -341,18 +341,19 @@ $('#run').onclick = () => {
   const songs = parseSongs($('#songs').value);
   if (!songs.length) { view = 'pub'; show(); shake($('#songs')); return; }
   if (!scorers.length) { shake($('#scs')); return; }
-  const { rows, warns } = aggregate(songs, scorers), texts = rows.map(formatRow);
-  lastText = texts.join('\n\n');
+  const { rows, warns } = aggregate(songs, scorers), S = summarize(rows), texts = rows.map(r => formatRow(r, S)), sumText = formatSummary(S);
+  lastText = [sumText, ...texts].join('\n\n');
+  const tg = x => x ? `<i class="tg2">${x}</i>` : '';
   $('#warns').innerHTML = warns.map(w => `<div>${esc(w)}</div>`).join('');
-  $('#out').innerHTML = rows.map((r, k) => `<div class="cd${r.rank === 1 ? ' top' : ''}">
+  $('#out').innerHTML = `<div class="sum"><div>全体平均<b>${fmt3(S.mean)}</b></div><div>標準偏差平均<b>${fmt3(S.sdMean)}</b></div><div>総お気に入り<b>${S.favTotal}</b></div><button class="btn cp" data-c="sum" aria-label="コピー">${COPY}</button></div>` + rows.map((r, k) => { const T = tags(r, S); return `<div class="cd${r.rank === 1 ? ' top' : ''}">
     <div class="rk">${r.rank}</div>
     <h3>${esc(r.name)}</h3>
     <div class="au">${esc(r.author || '')}</div>
     <button class="btn cp" data-c="${k}" aria-label="コピー">${COPY}</button>
-    <div class="st"><div>平均<b>${fmt2(r.mean)}</b></div><div>お気に入り<b>${r.favs}</b></div><div>標準偏差<b>${fmt2(r.sd)}</b></div><div>MAX<b>${r.maxes}</b></div></div>
-    <div class="sv">${[...r.ents].sort((a, b) => b.v - a.v).map(e => `<span class="${e.fav ? 'f ' : ''}${e.max ? 'm' : ''}">${esc(e.v)}</span>`).join('')}</div>
-  </div>`).join('');
-  $$('#out [data-c]').forEach(b => b.onclick = () => copy(texts[b.dataset.c], b));
+    <div class="st"><div>平均<b>${fmt3(r.mean)}</b></div><div>お気に入り<b>${r.favs}</b>${tg(T.favs)}</div><div>標準偏差<b>${fmt3(r.sd)}</b>${tg(T.sd)}</div><div>MAX<b>${r.maxes}</b>${tg(T.maxes)}</div></div>
+    <div class="sv">${[...r.ents].sort((a, b) => b.v - a.v).map(e => `<span class="${e.fav ? 'f ' : ''}${e.max ? 'm' : ''}">${esc(e.v)}${e.fav ? '<i class="fs">★</i>' : ''}</span>`).join('')}</div>
+  </div>`; }).join('');
+  $$('#out [data-c]').forEach(b => b.onclick = () => copy(b.dataset.c === 'sum' ? sumText : texts[b.dataset.c], b));
   $('#resWrap').hidden = false; $('#copyAll').disabled = false;
   $('#resWrap').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
 };
