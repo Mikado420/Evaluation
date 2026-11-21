@@ -7,7 +7,7 @@
 <script>
 // 新しい版が出ていたら、URL を変えて読み込み直す（ホーム画面のアプリでも古い画面が残らないように）
 (function () {
-  var V='1.8.0';
+  var V='1.9.0';
   function check() {
     fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
       if (!j.v || j.v === V) return;
@@ -301,7 +301,7 @@ button.tr.fl{cursor:pointer}button.tr.fl:hover{background:var(--card)}button.tr.
   <button data-v="judge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>評価</button>
 </div></nav>
 
-<script src="core.js?v=1.8.0"></script>
-<script type="module" src="app.js?v=1.8.0"></script>
+<script src="core.js?v=1.9.0"></script>
+<script type="module" src="app.js?v=1.9.0"></script>
 </body>
 </html>

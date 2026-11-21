@@ -1,4 +1,4 @@
-const VER = '1.8.0';
+const VER = '1.9.0';
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const store = (k, v) => { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || 'null'); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } };
@@ -231,10 +231,18 @@ $('#dlZip').onclick = () => {
   fillSongs();
   save(root + '.zip', new Blob(makeZip(out), { type: 'application/zip' }));
 };
-$('#toPub').onclick = () => { fillSongs(); if (!$('#pName').value.trim()) $('#pName').value = $('#root').value; saveH(); view = 'pub'; show(); };
+$('#toPub').onclick = () => {
+  // 曲目が今の大会と同じ（並べ替えだけ）なら更新、違えば新しい大会として開く
+  const key = a => a.map(s => s.name).sort().join('\n');
+  if (H.roomId && key(mapping().map(m => ({ name: m.title }))) !== key(parseSongs(H.songs))) newRoom();
+  fillSongs(); if (!$('#pName').value.trim()) $('#pName').value = $('#root').value; saveH(); view = 'pub'; show();
+};
 
 /* ===== 02 公開 ===== */
-const H = Object.assign({ roomId: null, name: '', pass: '', songs: '', open: true, pubPass: null, scorers: [], startAt: null, endAt: null }, store('taikai-host') || {});
+const H = Object.assign({ roomId: null, name: '', pass: '', songs: '', open: true, pubPass: null, scMap: {}, startAt: null, endAt: null }, store('taikai-host') || {});
+// 採点者は大会ごとに保存（旧形式 scorers から移行）
+if (!H.scMap) H.scMap = {};
+if (H.scorers) { if (H.scorers.length) H.scMap[H.roomId || ''] = H.scorers; delete H.scorers; }
 const toLocal = ms => { if (!ms) return ''; const d = new Date(ms), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
 const fromLocal = v => { if (!v) return null; const t = new Date(v).getTime(); return isFinite(t) ? t : null; };
 function tbShow() {
@@ -256,12 +264,12 @@ async function refreshMyRooms() {
   if (!(await ready)) { $('#myRooms').innerHTML = ''; return; }
   try { myList = await S.myRooms(); } catch (e) { myList = []; }
   $('#myRooms').innerHTML = myList.map(r => `<button class="chip" data-r="${esc(r.id)}" aria-pressed="${r.id === H.roomId}">${r.open ? '<i class="d"></i>' : ''}${esc(r.name || '無題')}</button>`).join('')
-    + `<button class="chip dash" data-r="" aria-pressed="${!H.roomId}" aria-label="新しい大会">＋</button>`;
+    + `<button class="chip dash" data-r="" aria-pressed="${!H.roomId}">＋ 新しい大会</button>`;
 }
 $('#myRooms').addEventListener('click', async e => {
   const b = e.target.closest('[data-r]'); if (!b) return;
   const id = b.dataset.r;
-  if (!id) { Object.assign(H, { roomId: null, name: '', pass: '', songs: H.songs, open: true, pubPass: null, startAt: null, endAt: null }); $('#pName').value = ''; $('#pPass').value = ''; $('#pOpen').checked = true; setTimes(); }
+  if (!id) { if (!H.roomId) return; $('#songs').value = ''; newRoom(); return; }
   else {
     const r = await S.loadRoom(id); if (!r) return;
     const authors = r.authors || [];
@@ -269,8 +277,14 @@ $('#myRooms').addEventListener('click', async e => {
     H.songs = (r.titles || []).map((t, i) => t + (authors[i] ? ' / ' + authors[i] : '')).join('\n');
     $('#pName').value = H.name; $('#pPass').value = H.pass; $('#songs').value = H.songs; $('#pOpen').checked = H.open;
   }
-  saveH(); watch(); refreshMyRooms();
+  saveH(); loadSc(); watch(); refreshMyRooms();
 });
+// 新しい大会（未公開）の状態にする。曲目は呼び出し側で決める
+function newRoom() {
+  Object.assign(H, { roomId: null, name: '', pass: '', open: true, pubPass: null, startAt: null, endAt: null });
+  $('#pName').value = ''; $('#pPass').value = ''; $('#pOpen').checked = true; setTimes();
+  delete H.scMap['']; saveH(); loadSc(); watch(); refreshMyRooms();
+}
 $('#pOpen').addEventListener('change', async () => {
   saveH();
   if (H.roomId && await ready) { try { await S.setOpen(H.roomId, H.open); refreshMyRooms(); } catch (e) { $('#pOpen').checked = !H.open; saveH(); } }
@@ -283,7 +297,9 @@ $('#pubBtn').onclick = async e => {
   if (H.startAt && H.endAt && H.endAt <= H.startAt) { shake($('#pEnd')); return; }
   btn.disabled = true;
   try {
+    const wasNew = !H.roomId;
     H.roomId = await S.publish({ roomId: H.roomId, name: $('#pName').value.trim(), pass: $('#pPass').value.trim(), titles: songs.map(s => s.name), authors: songs.map(s => s.author), open: $('#pOpen').checked, startAt: H.startAt, endAt: H.endAt });
+    if (wasNew && H.scMap['']) { H.scMap[H.roomId] = H.scMap['']; delete H.scMap['']; }
     H.pubPass = $('#pPass').value.trim(); saveH(); watch(); refreshMyRooms();
     flash(btn, '✓ 公開済み', 1600);
   } catch (er) { console.error(er); flash(btn, '失敗しました', 1600); }
@@ -310,8 +326,9 @@ function syncScorers() {
 }
 
 /* ===== 03 集計 ===== */
-let scorers = H.scorers && H.scorers.length ? H.scorers : [];
-function saveSc() { H.scorers = scorers; store('taikai-host', H); }
+let scorers = (H.scMap[H.roomId || ''] || []).slice();
+function saveSc() { if (scorers.length) H.scMap[H.roomId || ''] = scorers; else delete H.scMap[H.roomId || '']; store('taikai-host', H); }
+function loadSc() { scorers = (H.scMap[H.roomId || ''] || []).slice(); renderSc(); $('#resWrap').hidden = true; $('#copyAll').disabled = true; }
 function renderSc() {
   const n = parseSongs($('#songs').value).length;
   $('#scs').innerHTML = scorers.map((sc, i) => { const c = parseScoreLines(sc.text).vals.filter(Boolean).length; return `<button class="chip" data-s="${i}">${sc.uid ? CLOUD : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>'}${esc(sc.name || '無名')}<span style="font-family:var(--num);opacity:.7">${c}/${n}</span></button>`; }).join('')

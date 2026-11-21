@@ -143,11 +143,13 @@ function makePlan(charts, order, opt) { // opt: {prefix, audioMode, audioName, f
     const display = label ? `${g}【${label}】` : g;
     const base = safeName(label ? `${g} ${label}` : g);
     const ext = c.audio ? (c.audio.name.match(/\.[^.]+$/) || ['.ogg'])[0].toLowerCase() : '.ogg';
-    if (opt.flat) return { id, n: n + 1, label, display, base, folder: '', audioName: safeName(g) + ext, chart: c };
+    // 音源名は曲名のみ（譜面ラベル A/B… は付けない）。WAVE: もこの名前になる
+    const song = safeName(g) + ext;
+    if (opt.flat) return { id, n: n + 1, label, display, base, folder: '', audioName: song, chart: c };
     let folder = (opt.prefix ? String(n + 1).padStart(2, '0') + ' ' : '') + base, k = 2;
     while (used.has(folder)) folder = `${opt.prefix ? String(n + 1).padStart(2, '0') + ' ' : ''}${base} (${k++})`;
     used.add(folder);
-    let audioName = base + ext;
+    let audioName = song;
     if (opt.audioMode === 'fixed' && opt.audioName.trim()) { audioName = safeName(opt.audioName.trim()); if (!/\.[^.]+$/.test(audioName)) audioName += ext; }
     return { id, n: n + 1, label, display, base, folder, audioName, chart: c };
   });
