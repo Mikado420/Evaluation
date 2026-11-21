@@ -1,4 +1,4 @@
-const VER = '1.9.0';
+const VER = '1.9.1';
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const store = (k, v) => { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || 'null'); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } };
@@ -258,7 +258,7 @@ $('#pName').value = H.name; $('#pPass').value = H.pass; $('#songs').value = H.so
 function saveH() { Object.assign(H, { name: $('#pName').value, pass: $('#pPass').value, songs: $('#songs').value, open: $('#pOpen').checked, startAt: fromLocal($('#pStart').value), endAt: fromLocal($('#pEnd').value) }); store('taikai-host', H); updPubBtn(); tbShow(); }
 ['#pName', '#pPass', '#songs', '#pStart', '#pEnd'].forEach(s => $(s).addEventListener('input', saveH));
 $$('[data-clr]').forEach(b => b.onclick = () => { $('#' + b.dataset.clr).value = ''; saveH(); });
-function updPubBtn() { $('#pubBtn').textContent = H.roomId ? '更新' : '公開'; }
+function updPubBtn() { $('#pubBtn').textContent = H.roomId ? '更新' : '公開'; $('#pDel').hidden = !H.roomId; }
 let myList = [];
 async function refreshMyRooms() {
   if (!(await ready)) { $('#myRooms').innerHTML = ''; return; }
@@ -277,7 +277,7 @@ $('#myRooms').addEventListener('click', async e => {
     H.songs = (r.titles || []).map((t, i) => t + (authors[i] ? ' / ' + authors[i] : '')).join('\n');
     $('#pName').value = H.name; $('#pPass').value = H.pass; $('#songs').value = H.songs; $('#pOpen').checked = H.open;
   }
-  saveH(); loadSc(); watch(); refreshMyRooms();
+  pDelReset(); saveH(); loadSc(); watch(); refreshMyRooms();
 });
 // 新しい大会（未公開）の状態にする。曲目は呼び出し側で決める
 function newRoom() {
@@ -285,6 +285,23 @@ function newRoom() {
   $('#pName').value = ''; $('#pPass').value = ''; $('#pOpen').checked = true; setTimes();
   delete H.scMap['']; saveH(); loadSc(); watch(); refreshMyRooms();
 }
+// 大会の削除（開催中でも可）：2回押しで確定。届いた採点もサーバーから消える
+let pDelArm = false, pDelT = null;
+function pDelReset() { pDelArm = false; clearTimeout(pDelT); $('#pDel').classList.remove('arm'); $('#pDel').textContent = 'この大会を削除'; }
+$('#pDel').onclick = async () => {
+  if (!H.roomId) return;
+  if (!pDelArm) {
+    pDelArm = true; const b = $('#pDel'); b.classList.add('arm');
+    b.textContent = subs.length ? `採点${subs.length}件も消えます。もう一度押して削除` : 'もう一度押して削除';
+    pDelT = setTimeout(pDelReset, 3000); return;
+  }
+  const id = H.roomId; pDelReset(); $('#pDel').disabled = true;
+  try {
+    await S.deleteRoom(id);
+    delete H.scMap[id]; $('#songs').value = ''; newRoom();
+  } catch (er) { console.error(er); flash($('#pDel'), '削除できませんでした', 1600); }
+  $('#pDel').disabled = false;
+};
 $('#pOpen').addEventListener('change', async () => {
   saveH();
   if (H.roomId && await ready) { try { await S.setOpen(H.roomId, H.open); refreshMyRooms(); } catch (e) { $('#pOpen').checked = !H.open; saveH(); } }

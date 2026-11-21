@@ -46,6 +46,7 @@ export async function publish({ roomId, name, pass, titles, authors, open, start
   return (await call('/save', { id: roomId || null, name, pass, titles, authors, open, startAt, endAt })).id;
 }
 export const setOpen = (id, open) => call('/open', { id, open });
+export const deleteRoom = id => call('/delete', { id });
 export async function watchSubs(id, pass, cb) { return poll(() => call('/subs', { id }), cb, 5000); }
 export async function enter(id, pass) {
   try { const d = await call('/enter', { id, pass }); return { key: pass, titles: d.titles, roster: d.roster || [], mine: d.mine, startAt: d.startAt, endAt: d.endAt, now: d.now }; }
