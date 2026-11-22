@@ -3,6 +3,7 @@ import { API } from './config.js';
 
 const base = String(API || '').replace(/\/+$/, '');
 let token = null;
+const TOKEN_RE = /^[0-9a-f]{16,128}$/i;
 try { token = localStorage.getItem('taikai-token'); } catch (e) {}
 if (!token) {
   token = [...crypto.getRandomValues(new Uint8Array(24))].map(x => x.toString(16).padStart(2, '0')).join('');
@@ -39,17 +40,25 @@ export async function init() {
   apiVer = h.ver || null;
   return token;
 }
+// 主催者の引き継ぎ：この端末の鍵を書き出す・別の端末の鍵に置き換える
+export const getToken = () => token;
+export function setToken(t) {
+  t = String(t || '').trim();
+  if (!TOKEN_RE.test(t)) return false;
+  try { localStorage.setItem('taikai-token', t); } catch (e) { return false; }
+  token = t; return true;
+}
 export const watchOpenRooms = cb => poll(() => call('/rooms'), cb, 10000);
 export const myRooms = () => call('/mine', {});
 export const loadRoom = id => call('/load', { id }).catch(() => null);
 export async function publish({ roomId, name, pass, titles, authors, open, startAt, endAt }) {
-  return (await call('/save', { id: roomId || null, name, pass, titles, authors, open, startAt, endAt })).id;
+  return call('/save', { id: roomId || null, name, pass, titles, authors, open, startAt, endAt });
 }
 export const setOpen = (id, open) => call('/open', { id, open });
 export const deleteRoom = id => call('/delete', { id });
 export async function watchSubs(id, pass, cb) { return poll(() => call('/subs', { id }), cb, 5000); }
 export async function enter(id, pass) {
-  try { const d = await call('/enter', { id, pass }); return { key: pass, titles: d.titles, roster: d.roster || [], mine: d.mine, startAt: d.startAt, endAt: d.endAt, now: d.now }; }
+  try { const d = await call('/enter', { id, pass }); return { key: pass, titles: d.titles, ids: d.ids || null, roster: d.roster || [], mine: d.mine, startAt: d.startAt, endAt: d.endAt, now: d.now }; }
   catch (e) { if (e.status === 403 || e.status === 404) return null; throw e; }
 }
-export const submit = (id, key, name, scores) => call('/submit', { id, pass: key, name, scores });
+export const submit = (id, key, name, scores, ids) => call('/submit', { id, pass: key, name, scores, ids: ids || undefined });

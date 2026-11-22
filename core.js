@@ -162,6 +162,13 @@ function parseSongs(text) {
     return i < 0 ? { name: l, author: '' } : { name: l.slice(0, i).trim(), author: l.slice(i + 3).trim() };
   });
 }
+// 新旧の曲目を対応付ける（Worker の matchSongs と同じ）。news[i] に対応する olds の番号、なければ -1
+function matchSongs(olds, news) {
+  const strip = t => String(t).replace(/【[^【】]*】\s*$/, '').trim(), used = new Set(), res = news.map(() => -1);
+  const passes = [(o, n) => o.name === n.name && o.author === n.author, (o, n) => !!n.author && o.author === n.author && strip(o.name) === strip(n.name), (o, n) => o.name === n.name];
+  for (const eq of passes) news.forEach((n, i) => { if (res[i] >= 0) return; const j = olds.findIndex((o, k) => !used.has(k) && eq(o, n)); if (j >= 0) { res[i] = j; used.add(j); } });
+  return res;
+}
 function parseScoreLines(text) {
   const lines = text.split(/\r?\n/);
   while (lines.length && !lines[lines.length - 1].trim()) lines.pop();

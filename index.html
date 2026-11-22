@@ -7,7 +7,7 @@
 <script>
 // 新しい版が出ていたら、URL を変えて読み込み直す（ホーム画面のアプリでも古い画面が残らないように）
 (function () {
-  var V='1.9.1';
+  var V='1.10.0';
   function check() {
     fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
       if (!j.v || j.v === V) return;
@@ -102,6 +102,7 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:15px;line-height:1.6
 .it .ed small{font-size:11px;color:var(--mute);word-break:break-all}
 .it .er{display:flex;align-items:center;gap:8px}.it .er small{flex:1}
 .pdel{margin-top:28px;display:flex;justify-content:flex-end}
+.tk{margin-top:20px;border-top:1.5px solid var(--line);padding-top:12px;font-size:13px}.tk summary{cursor:pointer;font-weight:700;color:var(--mute)}.tk p{margin:8px 0;color:var(--mute)}.tk .note{font-size:12px}.tkr{display:flex;gap:6px;margin:8px 0}.tkr input{flex:1;min-width:0}#tkCode{width:100%;font-family:monospace}
 .del{border:1.5px solid var(--ink);background:var(--bg);color:var(--ink);font-weight:700;font-size:13px;min-height:32px;padding:0 10px;cursor:pointer;white-space:nowrap}.del:hover{background:var(--ink);color:var(--bg)}.del.arm{background:var(--acc);border-color:var(--acc);color:var(--on)}
 .it.edit{cursor:default;background:linear-gradient(90deg,var(--acc) 3px,transparent 3px)}
 .vw{border:1.5px solid var(--ink);background:var(--bg);color:var(--ink);font:700 13px var(--num);letter-spacing:.04em;padding:0 8px;cursor:pointer;min-height:30px}
@@ -239,6 +240,14 @@ button.tr.fl{cursor:pointer}button.tr.fl:hover{background:var(--card)}button.tr.
   <div class="stat"><label class="sw"><input type="checkbox" id="pOpen" checked>公開中</label><span class="n" id="subN">0</span><small>件</small></div>
   <div class="who" id="who"></div>
   <div class="pdel"><button class="del" id="pDel" hidden>この大会を削除</button></div>
+  <details class="tk">
+    <summary>主催者の引き継ぎ</summary>
+    <p>別の端末やブラウザで同じ大会を管理するときに使います。コードは他人に見せないでください。</p>
+    <div class="tkr"><button class="del" id="tkShow">この端末のコードを表示</button><button class="del" id="tkCopy" hidden>コピー</button></div>
+    <input type="text" id="tkCode" readonly hidden aria-label="この端末のコード">
+    <div class="tkr"><input type="text" id="tkIn" placeholder="別の端末のコードを貼り付け" autocomplete="off" aria-label="引き継ぐコード"><button class="del" id="tkLoad">読み込む</button></div>
+    <p class="note">読み込むと、この端末の主催者はそのコードの人に切り替わります。今のコードは先に控えておいてください。</p>
+  </details>
 </section>
 
 <section id="tally" hidden>
@@ -303,7 +312,7 @@ button.tr.fl{cursor:pointer}button.tr.fl:hover{background:var(--card)}button.tr.
   <button data-v="judge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>評価</button>
 </div></nav>
 
-<script src="core.js?v=1.9.1"></script>
-<script type="module" src="app.js?v=1.9.1"></script>
+<script src="core.js?v=1.10.0"></script>
+<script type="module" src="app.js?v=1.10.0"></script>
 </body>
 </html>
